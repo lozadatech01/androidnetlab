@@ -89,7 +89,7 @@ class MainActivity : Activity() {
                 setBackgroundTintList(android.content.res.ColorStateList.valueOf(if (page == index) 0xFF203653.toInt() else surface))
                 minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
                 setPadding(dp(2), dp(3), dp(2), dp(3))
-                setOnClickListener { page = index; drawPage() }
+                setOnClickListener { if (page != index) { hideNativeKeyboard(); page = index; render() } }
             }, LinearLayout.LayoutParams(0, dp(if (landscape()) 36 else 42), 1f).apply { marginEnd = dp(4) })
         }
     }
@@ -227,7 +227,7 @@ class MainActivity : Activity() {
                     addView(label(name, 11, if (profile == name) blue else white, true))
                     addView(label(if (name == "Alpine Linux") "Lightweight starter profile" else "ARM64 profile preview", 9, muted))
                 })
-                addView(chip(if (profile == name) "Selected" else "Select") {
+                addView(chip(if (profile == name) "✓ Selected" else "Select") {
                     if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
                 })
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
@@ -264,11 +264,15 @@ class MainActivity : Activity() {
         cpuCount = p.getInt("cpu_count", cpuCount).coerceIn(1, 4)
         diskGb = p.getInt("disk_gb", diskGb).coerceIn(2, 32)
         networkMode = p.getString("network_mode", networkMode) ?: networkMode
+        if (networkMode !in listOf("User NAT", "Isolated", "Bridge*")) networkMode = "User NAT"
         keepAwake = p.getBoolean("keep_awake", keepAwake)
         autoStart = p.getBoolean("auto_start", autoStart)
         layoutMode = p.getInt("layout_mode", layoutMode).coerceIn(0, 2)
         windowCount = p.getInt("window_count", windowCount).coerceIn(1, 4)
         activeWindow = p.getInt("active_window", activeWindow).coerceIn(1, windowCount)
+        page = p.getInt("selected_page", page).coerceIn(0, 3)
+        showKeyboard = p.getBoolean("show_keyboard", showKeyboard)
+        keyboardMode = p.getInt("keyboard_mode", keyboardMode).coerceIn(0, 1)
         val saved = p.getString("custom_profiles", "") ?: ""
         customProfiles.clear()
         saved.split("\\n").map { it.trim() }.filter { it.isNotEmpty() && it !in builtInProfiles }.distinct().forEach { customProfiles.add(it) }
@@ -282,7 +286,9 @@ class MainActivity : Activity() {
             .putInt("cpu_count", cpuCount).putInt("disk_gb", diskGb).putString("network_mode", networkMode)
             .putBoolean("keep_awake", keepAwake).putBoolean("auto_start", autoStart)
             .putInt("layout_mode", layoutMode).putInt("window_count", windowCount)
-            .putInt("active_window", activeWindow).putString("custom_profiles", customProfiles.joinToString("\\n")).apply()
+            .putInt("active_window", activeWindow).putInt("selected_page", page)
+            .putBoolean("show_keyboard", showKeyboard).putInt("keyboard_mode", keyboardMode)
+            .putString("custom_profiles", customProfiles.joinToString("\\n")).apply()
     }
 
     private fun profileKey(name: String, field: String) = "vm_profile.${name.hashCode()}.$field"
@@ -322,7 +328,7 @@ class MainActivity : Activity() {
                 when {
                     name.isBlank() -> toast("Enter a profile name.")
                     name.length > 40 -> toast("Keep the name under 40 characters.")
-                    name in builtInProfiles || name in customProfiles -> toast("That profile already exists.")
+                    (builtInProfiles + customProfiles).any { it.equals(name, ignoreCase = true) } -> toast("That profile already exists.")
                     else -> {
                         saveProfileSettings(profile)
                         customProfiles.add(name)
@@ -352,7 +358,7 @@ class MainActivity : Activity() {
         val tempDisk = java.io.File(vmDir, "disk.img.creating")
         val requestedBytes = diskGb.toLong() * 1024L * 1024L * 1024L
         try {
-            if (disk.exists()) { toast("Disk already exists; existing data was preserved."); return }
+            if (disk.exists()) { toast("Disk already exists; existing data was preserved."); drawPage(); return }
             if (tempDisk.exists()) { toast("An incomplete disk creation file exists; inspect app storage before retrying."); return }
             if (requestedBytes > filesDir.usableSpace - 64L * 1024L * 1024L) { toast("Not enough app storage. Free space or reduce disk size."); return }
             if (!vmDir.exists() && !vmDir.mkdirs()) throw java.io.IOException("Could not create VM storage directory")
@@ -364,9 +370,11 @@ class MainActivity : Activity() {
             if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Could not finalize VM metadata")
             if (disk.exists() || !tempDisk.renameTo(disk)) throw java.io.IOException("Could not finalize virtual disk")
             toast("Created private raw disk: ${diskGb} GB logical size.")
+            drawPage()
         } catch (e: Exception) {
             if (tempDisk.exists()) tempDisk.delete()
             toast("Disk creation failed: ${e.message ?: "storage error"}")
+            drawPage()
         }
     }
     private fun drawSettings() {
