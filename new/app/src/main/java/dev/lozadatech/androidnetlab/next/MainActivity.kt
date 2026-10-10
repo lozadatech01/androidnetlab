@@ -1,16 +1,14 @@
 package dev.lozadatech.androidnetlab.next
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
-import android.content.Context
 import android.widget.Button
 import android.widget.EditText
-import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -22,30 +20,32 @@ class MainActivity : Activity() {
     private val blue = 0xFF60A5FA.toInt()
     private val white = 0xFFF3F6FB.toInt()
     private val muted = 0xFF9CAFC4.toInt()
+    private var page = 1
     private var windowCount = 2
     private var activeWindow = 1
-    private var keyboardMode = KeyboardMode.APP
+    private var keyboardMode = 0
     private var showKeyboard = true
-    private var layoutMode = LayoutMode.AUTO
+    private var layoutMode = 0
+    private var profile = "Alpine Linux"
+    private var ramMb = 512
+    private var cpuCount = 1
+    private var diskGb = 4
+    private var networkMode = "User NAT"
+    private var keepAwake = true
+    private var autoStart = false
     private lateinit var root: LinearLayout
-    private lateinit var panels: LinearLayout
-    private lateinit var keyboardHost: LinearLayout
-    private lateinit var commandInput: EditText
+    private lateinit var pageHost: LinearLayout
     private lateinit var status: TextView
-
-    private enum class KeyboardMode { APP, NATIVE }
-    private enum class LayoutMode { AUTO, SIDE_BY_SIDE, STACKED }
+    private lateinit var commandInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        // Hide the Android status bar (time, battery, etc.) while using the VM workspace.
         @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        if (keepAwake) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         render()
     }
 
@@ -53,254 +53,262 @@ class MainActivity : Activity() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
-            val landscape = isLandscape()
-            setPadding(dp(if (landscape) 3 else 12), dp(if (landscape) 2 else 8),
-                dp(if (landscape) 3 else 12), dp(if (landscape) 2 else 8))
+            setPadding(dp(if (landscape()) 4 else 12), dp(if (landscape()) 3 else 8),
+                dp(if (landscape()) 4 else 12), dp(4))
         }
-        // Landscape uses a compact workspace without branding or a permanent status banner.
-        if (!isLandscape()) root.addView(topBar())
-        root.addView(toolbar())
-        status = text("Runtime unavailable • console layout preview only", 11, muted)
-        status.setPadding(dp(2), dp(6), dp(2), dp(8))
-        if (!isLandscape()) root.addView(status)
-        panels = LinearLayout(this).apply {
+        if (!landscape()) {
+            root.addView(label("AndroidNetLab", 20, white, true))
+            root.addView(label("VIRTUAL MACHINE WORKSPACE", 9, blue, true))
+        }
+        pageHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        }
+        root.addView(pageHost)
+        root.addView(navigation())
+        setContentView(root)
+        drawPage()
+    }
+
+    private fun navigation() = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(5), 0, 0)
+        val names = listOf("Overview", "Multi", "VMs", "Settings")
+        names.forEachIndexed { index, name ->
+            addView(Button(this@MainActivity).apply {
+                text = name
+                textSize = if (landscape()) 9f else 10f
+                isAllCaps = false
+                setTextColor(if (page == index) blue else muted)
+                setBackgroundTintList(android.content.res.ColorStateList.valueOf(if (page == index) 0xFF203653.toInt() else surface))
+                minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+                setPadding(dp(2), dp(3), dp(2), dp(3))
+                setOnClickListener { page = index; drawPage() }
+            }, LinearLayout.LayoutParams(0, dp(if (landscape()) 36 else 42), 1f).apply { marginEnd = dp(4) })
+        }
+    }
+
+    private fun drawPage() {
+        pageHost.removeAllViews()
+        when (page) {
+            0 -> drawOverview()
+            1 -> drawMultiWindow()
+            2 -> drawVmManager()
+            else -> drawSettings()
+        }
+    }
+
+    private fun drawOverview() {
+        pageHost.addView(label("OVERVIEW", 10, muted, true).apply { setPadding(0, dp(5), 0, dp(6)) })
+        pageHost.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(surface)
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            addView(label("WORKSPACE CANVAS", 12, muted, true).apply { gravity = Gravity.CENTER })
+            addView(label("One large blank window", 10, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
+        })
+        pageHost.addView(label("Network topology and live VM status will appear here after runtime integration.", 10, muted).apply { setPadding(dp(3), dp(6), dp(3), dp(4)) })
+    }
+
+    private fun drawMultiWindow() {
+        pageHost.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(5))
+            addView(label("PANELS", 10, muted, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+            (1..4).forEach { count ->
+                addView(chip("$count") { windowCount = count; activeWindow = activeWindow.coerceAtMost(count); drawPage() },
+                    LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(3) })
+            }
+            addView(chip(if (showKeyboard) "Keys off" else "Keys on") { showKeyboard = !showKeyboard; hideNativeKeyboard(); drawPage() },
+                LinearLayout.LayoutParams(-2, dp(32)).apply { marginStart = dp(4) })
+        })
+        val panels = LinearLayout(this).apply {
             orientation = if (effectiveStacked()) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
         }
-        root.addView(panels)
-        keyboardHost = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(-1, -2)
-        }
-        root.addView(keyboardHost)
-        setContentView(root)
-        renderPanels()
-        renderKeyboard()
-    }
-
-    private fun topBar() = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        addView(LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-            addView(text("AndroidNetLab", 21, white, true))
-            addView(text("VM WORKSPACE", 10, blue, true))
-        })
-        addView(chip("Network overview") {
-            status.text = "Network overview is planned; real QEMU networking is not connected yet."
-        })
-    }
-
-    private fun toolbar() = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(if (isLandscape()) 1 else 12), 0, dp(if (isLandscape()) 1 else 4))
-        addView(text("WINDOWS", 10, muted, true).apply {
-            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-        })
-        for (count in 1..4) {
-            addView(chip("$count") {
-                windowCount = count
-                activeWindow = activeWindow.coerceAtMost(count)
-                renderPanels()
-                renderKeyboard()
-            }, LinearLayout.LayoutParams(dp(42), dp(38)).apply {
-                marginStart = dp(4)
-            })
-        }
-        addView(chip(if (showKeyboard) "Hide keys" else "Show keys") {
-            showKeyboard = !showKeyboard
-            if (!showKeyboard) {
-                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                    .hideSoftInputFromWindow(root.windowToken, 0)
-            }
-            renderKeyboard()
-        }, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(5) })
-    }
-
-    private fun renderPanels() {
-        panels.removeAllViews()
-        panels.orientation = if (effectiveStacked()) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-        for (i in 1..windowCount) {
-            val selected = i == activeWindow
+        (1..windowCount).forEach { number ->
+            val selected = number == activeWindow
             val panel = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(8))
+                setPadding(dp(8), dp(8), dp(8), dp(6))
                 setBackgroundColor(if (selected) 0xFF162438.toInt() else surface)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener {
-                    activeWindow = i
-                    renderPanels()
-                    renderKeyboard()
-                    status.text = "VM $i selected • input will target this console when the runtime is integrated"
-                }
+                setOnClickListener { activeWindow = number; drawPage() }
             }
             panel.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(text("VM $i", 12, if (selected) blue else white, true).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-                })
-                addView(text(if (selected) "ACTIVE" else "TAP TO FOCUS", 9, if (selected) blue else muted, true))
+                addView(label("VM $number", 12, if (selected) blue else white, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+                addView(label(if (selected) "ACTIVE" else "SELECT", 8, muted, true))
             })
-            panel.addView(space(10))
-            panel.addView(text(if (selected) "Console selected" else "Console idle", 12, 0xFFA7F3D0.toInt()))
-            panel.addView(space(5))
-            panel.addView(text("QEMU runtime not connected", 10, muted))
-            panel.addView(space(4))
-            panel.addView(text("Tap panel to change input focus.", 10, muted))
-            val params = LinearLayout.LayoutParams(
-                if (effectiveStacked()) -1 else 0,
-                if (effectiveStacked()) 0 else -1,
-                1f
-            )
-            if (i > 1) {
-                if (effectiveStacked()) params.topMargin = dp(5) else params.marginStart = dp(5)
-            }
-            panels.addView(panel, params)
+            panel.addView(label("Console canvas", 11, 0xFF86EFAC.toInt()).apply { setPadding(0, dp(10), 0, dp(4)) })
+            panel.addView(label("Runtime not connected", 9, muted))
+            val stacked = effectiveStacked()
+            val lp = LinearLayout.LayoutParams(if (stacked) -1 else 0, if (stacked) 0 else -1, 1f)
+            if (number > 1) { if (stacked) lp.topMargin = dp(5) else lp.marginStart = dp(5) }
+            panels.addView(panel, lp)
         }
+        pageHost.addView(panels)
+        if (showKeyboard) drawKeyboard(pageHost)
+        status = label("UI preview only • QEMU runtime not connected", 9, muted)
+        pageHost.addView(status)
     }
 
-    private fun renderKeyboard() {
-        keyboardHost.removeAllViews()
-        if (!showKeyboard) return
-        val heading = LinearLayout(this).apply {
+    private fun drawKeyboard(host: LinearLayout) {
+        host.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(if (isLandscape()) 1 else 8), 0, dp(if (isLandscape()) 2 else 6))
-            addView(text("INPUT → VM $activeWindow", 11, blue, true).apply {
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-            })
-            addView(chip(if (keyboardMode == KeyboardMode.APP) "App keyboard" else "Native keyboard") {
-                keyboardMode = if (keyboardMode == KeyboardMode.APP) KeyboardMode.NATIVE else KeyboardMode.APP
-                if (keyboardMode == KeyboardMode.NATIVE) {
-                    showKeyboard = true
-                    renderKeyboard()
+            setPadding(0, dp(4), 0, dp(3))
+            addView(label("INPUT → VM $activeWindow", 10, blue, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+            addView(chip(if (keyboardMode == 0) "App keys" else "Native keys") {
+                keyboardMode = 1 - keyboardMode
+                drawPage()
+                if (keyboardMode == 1) {
                     commandInput.requestFocus()
-                    commandInput.post {
-                        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                            .showSoftInput(commandInput, InputMethodManager.SHOW_IMPLICIT)
-                    }
-                } else {
-                    (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                        .hideSoftInputFromWindow(commandInput.windowToken, 0)
-                    renderKeyboard()
-                }
+                    commandInput.post { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(commandInput, InputMethodManager.SHOW_IMPLICIT) }
+                } else hideNativeKeyboard()
             })
-        }
-        keyboardHost.addView(heading)
+        })
         commandInput = EditText(this).apply {
-            hint = if (keyboardMode == KeyboardMode.APP) "Command input (runtime not connected)" else "Tap to open Android keyboard"
-            setHintTextColor(muted)
-            setTextColor(white)
-            textSize = 13f
-            setSingleLine(true)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            setBackgroundColor(surface)
-            isFocusableInTouchMode = true
-            setOnClickListener {
-                if (keyboardMode == KeyboardMode.NATIVE) {
-                    (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                        .showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
-                }
+            hint = if (keyboardMode == 0) "Command input (runtime later)" else "Tap to open Android keyboard"
+            setHintTextColor(muted); setTextColor(white); textSize = 12f; setSingleLine(true)
+            setPadding(dp(8), dp(4), dp(8), dp(4)); setBackgroundColor(surface)
+            setOnClickListener { if (keyboardMode == 1) (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT) }
+        }
+        host.addView(commandInput, LinearLayout.LayoutParams(-1, dp(if (landscape()) 30 else 38)))
+        if (keyboardMode == 1) return
+        if (windowCount > 1) host.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(3), dp(4), dp(3)); setBackgroundColor(0xFF243449.toInt())
+            addView(label("FOCUS", 8, 0xFFBFDBFE.toInt(), true))
+            (1..windowCount).forEach { number ->
+                addView(chip("VM $number") { activeWindow = number; drawPage() }, LinearLayout.LayoutParams(0, dp(28), 1f).apply { marginStart = dp(3) })
             }
-        }
-        keyboardHost.addView(commandInput, LinearLayout.LayoutParams(-1, dp(if (isLandscape()) 32 else 42)))
-        if (keyboardMode == KeyboardMode.NATIVE) {
-            keyboardHost.addView(text("Android's installed keyboard handles text entry. Panel focus stays in the app.", 10, muted).apply {
-                setPadding(2, dp(6), 2, dp(6))
-            })
-            return
-        }
-        if (windowCount >= 2) {
-            keyboardHost.addView(focusStrip())
-        }
-        val keyRows = listOf(
-            listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "⌫"),
-            listOf(" / ", " - ", " | ", " : ", "←", "↓", "→"),
-            listOf("Home", "End", "PgUp", "PgDn", "Enter", "Space")
-        )
-        keyRows.forEach { row ->
-            val line = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(2), 0, dp(2))
-            }
-            row.forEach { key ->
-                line.addView(chip(key.trim()) {
-                    when (key.trim()) {
-                        "Enter" -> status.text = "Input prepared for VM $activeWindow • runtime not connected"
+        })
+        listOf(listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "⌫"), listOf("/", "-", "|", ":", "←", "↓", "→"), listOf("Home", "End", "PgUp", "PgDn", "Enter", "Space")).forEach { keys ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            keys.forEach { key ->
+                row.addView(chip(key) {
+                    when (key) {
                         "Space" -> commandInput.append(" ")
-                        "⌫" -> {
-                            val s = commandInput.text
-                            if (s.isNotEmpty()) s.delete(s.length - 1, s.length)
-                        }
-                        "↑", "↓", "←", "→" -> commandInput.append(key.trim())
+                        "⌫" -> { val v = commandInput.text; if (v.isNotEmpty()) v.delete(v.length - 1, v.length) }
                         "Tab" -> commandInput.append("\t")
                         "Esc" -> commandInput.append("\u001b")
-                        "Ctrl" -> status.text = "Ctrl modifier selected in prototype; guest key injection is not wired yet."
-                        "Alt" -> status.text = "Alt modifier selected in prototype; guest key injection is not wired yet."
+                        "Enter" -> toast("Input preview only; runtime not connected")
+                        "Ctrl", "Alt" -> toast("$key modifier preview only")
                         else -> commandInput.append(key)
                     }
-                }, LinearLayout.LayoutParams(0, dp(if (isLandscape()) 30 else 38), 1f).apply { marginEnd = dp(3) })
+                }, LinearLayout.LayoutParams(0, dp(if (landscape()) 28 else 34), 1f).apply { marginEnd = dp(3); topMargin = dp(2) })
             }
-            keyboardHost.addView(line)
+            host.addView(row)
         }
     }
 
-    private fun focusStrip(): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(5), dp(3), dp(5), dp(3))
-        setBackgroundColor(0xFF243449.toInt())
-        addView(text("FOCUS", 9, 0xFFBFDBFE.toInt(), true).apply {
-            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) }
+    private fun drawVmManager() {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
+        body.addView(label("VM MANAGER", 11, muted, true))
+        body.addView(label("Guest profiles and resource controls • UI preview only", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
+        body.addView(section("VM PROFILES"))
+        listOf("Alpine Linux", "Debian Linux", "Buildroot Minimal", "Custom ARM64 VM").forEach { name ->
+            body.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(9), dp(7), dp(7), dp(7)); setBackgroundColor(if (profile == name) 0xFF1B304B.toInt() else surface)
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                    addView(label(name, 11, if (profile == name) blue else white, true))
+                    addView(label(if (name == "Alpine Linux") "Lightweight starter profile" else "ARM64 profile preview", 9, muted))
+                })
+                addView(chip(if (profile == name) "Selected" else "Select") { profile = name; drawPage() })
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
+        }
+        body.addView(section("RESOURCES"))
+        body.addView(stepper("Guest memory", "$ramMb MB", { ramMb = (ramMb - 128).coerceAtLeast(128); drawPage() }, { ramMb = (ramMb + 128).coerceAtMost(2048); drawPage() }))
+        body.addView(stepper("Virtual CPUs", "$cpuCount core(s)", { cpuCount = (cpuCount - 1).coerceAtLeast(1); drawPage() }, { cpuCount = (cpuCount + 1).coerceAtMost(4); drawPage() }))
+        body.addView(stepper("Virtual disk", "$diskGb GB", { diskGb = (diskGb - 2).coerceAtLeast(2); drawPage() }, { diskGb = (diskGb + 2).coerceAtMost(32); drawPage() }))
+        body.addView(section("NETWORK ADAPTER"))
+        body.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            listOf("User NAT", "Isolated", "Bridge*").forEach { mode ->
+                addView(chip(if (networkMode == mode) "✓ $mode" else mode) { networkMode = mode; drawPage() },
+                    LinearLayout.LayoutParams(0, dp(36), 1f).apply { marginEnd = dp(4) })
+            }
         })
-        for (i in 1..windowCount) {
-            addView(chip("VM $i") {
-                activeWindow = i
-                renderPanels()
-                renderKeyboard()
-                status.text = "VM $i selected without closing the app keyboard"
-            }, LinearLayout.LayoutParams(0, dp(32), 1f).apply { marginEnd = dp(3) })
+        body.addView(label("*Bridge support depends on Android/device networking.", 9, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
+        body.addView(chip("+ Create VM profile") { toast("Create profile UI preview; disk creation comes later") }, LinearLayout.LayoutParams(-1, dp(40)))
+        body.addView(chip("▶ Start selected VM") { toast("QEMU is deferred; this button is a preview") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
+    }
+
+    private fun drawSettings() {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
+        body.addView(label("LAB SETTINGS", 11, muted, true))
+        body.addView(label("Workspace preferences and planned runtime options.", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
+        body.addView(section("WORKSPACE"))
+        body.addView(toggleRow("Keep screen awake", "Prevent timeout during a lab session", keepAwake) {
+            keepAwake = !keepAwake
+            if (keepAwake) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            drawPage()
+        })
+        body.addView(toggleRow("Auto-start last VM", "Startup behavior preview; no VM boots yet", autoStart) { autoStart = !autoStart; drawPage() })
+        body.addView(section("PANEL LAYOUT"))
+        listOf("Auto (portrait stacked)", "Side by side", "Stacked").forEachIndexed { index, title ->
+            body.addView(chip(if (layoutMode == index) "✓ $title" else title) { layoutMode = index; drawPage() },
+                LinearLayout.LayoutParams(-1, dp(36)).apply { bottomMargin = dp(4) })
         }
+        body.addView(section("RUNTIME (PLANNED)"))
+        body.addView(infoCard("QEMU runtime", "Not connected yet", "Guest boot, disk images, snapshots and virtual networking are later milestones."))
+        body.addView(section("ABOUT"))
+        body.addView(infoCard("AndroidNetLab • v0.1 UI", "Four workspace destinations", "Overview, Multi-window, VM Manager and Lab Settings are navigable."))
+        pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
-    private fun isLandscape(): Boolean =
-        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    private fun section(name: String) = label(name, 9, blue, true).apply { setPadding(0, dp(10), 0, dp(6)) }
 
-    private fun effectiveStacked(): Boolean = when (layoutMode) {
-        LayoutMode.STACKED -> true
-        LayoutMode.SIDE_BY_SIDE -> false
-        LayoutMode.AUTO -> resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
-    }
+    private fun stepper(name: String, value: String, decrement: () -> Unit, increment: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), dp(5), dp(5), dp(5)); setBackgroundColor(surface)
+        addView(label(name, 11, white).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+        addView(chip("−", decrement), LinearLayout.LayoutParams(dp(36), dp(32)))
+        addView(label(value, 10, blue, true).apply { gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(72), -2) })
+        addView(chip("+", increment), LinearLayout.LayoutParams(dp(36), dp(32)))
+    }.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) } }
+
+    private fun toggleRow(name: String, detail: String, value: Boolean, action: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(9), dp(8), dp(8), dp(8)); setBackgroundColor(surface)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            addView(label(name, 11, white, true)); addView(label(detail, 9, muted).apply { setPadding(0, dp(3), 0, 0) })
+        })
+        addView(chip(if (value) "ON" else "OFF", action))
+    }.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) } }
+
+    private fun infoCard(title: String, subtitle: String, detail: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(9), dp(10), dp(9)); setBackgroundColor(surface)
+        addView(label(title, 12, white, true)); addView(label(subtitle, 10, blue, true).apply { setPadding(0, dp(3), 0, dp(3)) }); addView(label(detail, 10, muted))
+    }.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) } }
+
+    private fun effectiveStacked() = when (layoutMode) { 1 -> false; 2 -> true; else -> !landscape() }
+    private fun landscape() = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    private fun hideNativeKeyboard() { try { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(root.windowToken, 0) } catch (_: Exception) {} }
+    private fun toast(message: String) = android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
 
     private fun chip(caption: String, action: () -> Unit) = Button(this).apply {
-        text = caption
-        textSize = 10f
-        isAllCaps = false
-        setTextColor(white)
+        text = caption; textSize = 10f; isAllCaps = false; setTextColor(white)
         setBackgroundTintList(android.content.res.ColorStateList.valueOf(surface2))
-        minHeight = 0
-        minimumHeight = 0
-        minWidth = 0
-        minimumWidth = 0
-        setPadding(dp(5), 0, dp(5), 0)
-        setOnClickListener { action() }
+        minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+        setPadding(dp(5), 0, dp(5), 0); setOnClickListener { action() }
     }
 
-    private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value
-        textSize = size.toFloat()
-        setTextColor(color)
+    private fun label(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
+        text = value; textSize = size.toFloat(); setTextColor(color)
         if (bold) setTypeface(typeface, Typeface.BOLD)
         gravity = Gravity.CENTER_VERTICAL
     }
 
-    private fun space(height: Int) = View(this).apply {
-        layoutParams = LinearLayout.LayoutParams(1, dp(height))
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
