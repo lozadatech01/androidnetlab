@@ -330,8 +330,18 @@ class MainActivity : Activity() {
         keyboardMode = p.getInt("keyboard_mode", keyboardMode).coerceIn(0, 1)
         val saved = p.getString("custom_profiles", "") ?: ""
         customProfiles.clear()
-        saved.split("\\n").map { it.trim() }.filter { it.isNotEmpty() && it !in builtInProfiles }.distinct().forEach { customProfiles.add(it) }
-        if (profile !in builtInProfiles && profile !in customProfiles) profile = builtInProfiles.first()
+        saved.split("\\n").map { it.trim() }
+            .filter { it.isNotEmpty() && it.length <= 40 && builtInProfiles.none { builtIn -> builtIn.equals(it, ignoreCase = true) } }
+            .forEach { candidate ->
+                if (customProfiles.none { existing -> existing.equals(candidate, ignoreCase = true) }) {
+                    customProfiles.add(candidate)
+                }
+            }
+        if ((builtInProfiles + customProfiles).none { it.equals(profile, ignoreCase = true) }) {
+            profile = builtInProfiles.first()
+        } else {
+            profile = (builtInProfiles + customProfiles).first { it.equals(profile, ignoreCase = true) }
+        }
         loadProfileSettings(profile)
     }
 
