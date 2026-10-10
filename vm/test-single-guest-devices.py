@@ -3,6 +3,7 @@
 from pathlib import Path
 import re
 import shutil
+import shlex
 import sys
 
 import pexpect
@@ -71,7 +72,7 @@ ip -n device1 neigh show
 ip -n device2 neigh show
 echo __SINGLE_GUEST_DEVICES_PASS__
 """
-            child.sendline("sh -c " + repr(commands) + "; echo __SINGLE_GUEST_DEVICES_DONE__")
+            child.sendline("sh -c " + shlex.quote(commands) + "; echo __SINGLE_GUEST_DEVICES_DONE__")
             child.expect("__SINGLE_GUEST_DEVICES_DONE__", timeout=50)
             output = child.before
             details.append(output[-5000:])
