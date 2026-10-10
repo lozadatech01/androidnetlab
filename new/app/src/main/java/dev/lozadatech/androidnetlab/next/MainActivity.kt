@@ -276,7 +276,13 @@ class MainActivity : Activity() {
                     addView(label(profileDiskSummary(name), 9, profileDiskSummaryColor(name)).apply { setPadding(0, dp(2), 0, 0) })
                 })
                 addView(chip(if (profile == name) "✓ Selected" else "Select") {
-                    if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
+                    if (profile != name) {
+                        if (activeVmState == VmState.STARTING || activeVmState == VmState.RUNNING || activeVmState == VmState.STOPPING || activeGuestProcess != null) {
+                            toast("Stop the active guest before switching VM profiles.")
+                        } else {
+                            saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage()
+                        }
+                    }
                 })
                 if (name in customProfiles) {
                     addView(chip("Delete") { confirmDeleteProfile(name) },
@@ -347,20 +353,54 @@ class MainActivity : Activity() {
             body.addView(label("Updates profile.txt only; virtual disk contents are not changed.", 9, muted)
                 .apply { setPadding(dp(2), dp(3), dp(2), dp(4)) })
         }
+        body.addView(section("GUEST BOOT FILES"))
+        val kernelFile = guestKernelFile()
+        val rootfsFile = guestRootfsBaseFile()
+        val kernelValid = GuestArtifactStore.isAarch64KernelImage(kernelFile)
+        val rootfsValid = GuestArtifactStore.isExt2Filesystem(rootfsFile)
+        body.addView(infoCard(
+            "Buildroot ARM64 kernel",
+            if (kernelValid) "Imported • ${formatMiB(kernelFile.length())}" else "Missing or invalid",
+            if (kernelValid) kernelFile.name else "Import the Image file from the Linux guest CI artifact."
+        ))
+        body.addView(chip("Import kernel Image") { confirmImportGuestArtifact(kernel = true) },
+            LinearLayout.LayoutParams(-1, dp(38)))
+        body.addView(infoCard(
+            "Buildroot root filesystem",
+            if (rootfsValid) "Imported • ${formatMiB(rootfsFile.length())}" else "Missing or invalid",
+            if (rootfsValid) "A private writable copy is made for each VM profile." else "Import rootfs.ext2 from the Linux guest CI artifact."
+        ))
+        body.addView(chip("Import rootfs.ext2") { confirmImportGuestArtifact(kernel = false) },
+            LinearLayout.LayoutParams(-1, dp(38)))
+        body.addView(label("First guest boot is headless and serial-only. No virtual NIC is attached yet; the saved network mode remains inactive.", 9, muted)
+            .apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
         body.addView(section("QEMU RUNTIME CHECK"))
-        body.addView(infoCard("Android ARM64 executable", qemuRuntimeSubtitle(), qemuProbeDetail))
+        body.addView(infoCard("Android ARM64 executable", qemuRuntimeSubtitle(), runtimeStatusDetail()))
         body.addView(chip(
             when {
                 qemuProbeRunning -> "QEMU smoke test running…"
                 qemuBinaryFile().isFile -> "Retest / replace QEMU binary"
                 else -> "Import & test QEMU ARM64 binary"
             }
-        ) { if (!qemuProbeRunning) confirmImportQemuBinary() }, LinearLayout.LayoutParams(-1, dp(40)))
+        ) { if (!qemuProbeRunning && activeGuestProcess == null) confirmImportQemuBinary() }, LinearLayout.LayoutParams(-1, dp(40)))
         body.addView(label(
-            "This verifies --version, the generic virt machine, and TCG from the app sandbox. It does not boot a guest.",
+            "The smoke test runs --version, -machine help, and -accel help in the app sandbox.",
             9, muted
         ).apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
-        body.addView(chip("▶ Start selected VM") { showRuntimeUnavailableDialog() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        body.addView(chip(
+            if (activeVmState == VmState.STARTING || activeVmState == VmState.RUNNING || activeVmState == VmState.STOPPING || activeGuestProcess != null) {
+                "■ Stop ${activeGuestProfile ?: "running guest"}"
+            } else {
+                "▶ Start selected VM"
+            }
+        ) {
+            if (activeVmState == VmState.STARTING || activeVmState == VmState.RUNNING || activeVmState == VmState.STOPPING || activeGuestProcess != null) stopSelectedVm()
+            else startSelectedVm()
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        if (activeVmState == VmState.STARTING || activeVmState == VmState.RUNNING || activeVmState == VmState.STOPPING || activeGuestProcess != null) {
+            body.addView(chip("Open live serial console") { showGuestConsoleDialog() },
+                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
+        }
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
     }
