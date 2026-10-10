@@ -8,15 +8,19 @@ on:
 permissions:
   contents: read
 jobs:
-  build-guest:
+  build-and-smoke-test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential bc cpio file git rsync unzip wget python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential bc cpio file git rsync unzip wget python3 qemu-system-arm
       - name: Build minimal AArch64 guest
         run: bash vm/build-guest.sh
-      - uses: actions/upload-artifact@v4
+      - name: Boot guest in QEMU and capture smoke metrics
+        run: bash vm/test-guest.sh
+      - name: Upload guest image and test reports
+        uses: actions/upload-artifact@v4
         with:
           name: androidnetlab-linux-guest-aarch64
           path: vm/dist/*
