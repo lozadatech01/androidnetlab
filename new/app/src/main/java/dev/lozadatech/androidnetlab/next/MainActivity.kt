@@ -227,7 +227,9 @@ class MainActivity : Activity() {
                     addView(label(name, 11, if (profile == name) blue else white, true))
                     addView(label(if (name == "Alpine Linux") "Lightweight starter profile" else "ARM64 profile preview", 9, muted))
                 })
-                addView(chip(if (profile == name) "Selected" else "Select") { profile = name; drawPage() })
+                addView(chip(if (profile == name) "Selected" else "Select") {
+                    if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
+                })
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
         }
         body.addView(section("RESOURCES"))
@@ -266,14 +268,41 @@ class MainActivity : Activity() {
         customProfiles.clear()
         saved.split("\\n").map { it.trim() }.filter { it.isNotEmpty() && it !in builtInProfiles }.distinct().forEach { customProfiles.add(it) }
         if (profile !in builtInProfiles && profile !in customProfiles) profile = builtInProfiles.first()
+        loadProfileSettings(profile)
     }
 
     private fun saveState() {
+        saveProfileSettings(profile)
         prefs.edit().putString("selected_profile", profile).putInt("ram_mb", ramMb)
             .putInt("cpu_count", cpuCount).putInt("disk_gb", diskGb).putString("network_mode", networkMode)
             .putBoolean("keep_awake", keepAwake).putBoolean("auto_start", autoStart)
             .putInt("layout_mode", layoutMode).putInt("window_count", windowCount)
             .putInt("active_window", activeWindow).putString("custom_profiles", customProfiles.joinToString("\\n")).apply()
+    }
+
+    private fun profileKey(name: String, field: String) = "vm_profile.${name.hashCode()}.$field"
+
+    private fun loadProfileSettings(name: String) {
+        val defaults = when (name) {
+            "Alpine Linux" -> intArrayOf(512, 1, 4)
+            "Debian Linux" -> intArrayOf(1024, 1, 6)
+            "Buildroot Minimal" -> intArrayOf(256, 1, 2)
+            "Custom ARM64 VM" -> intArrayOf(512, 1, 4)
+            else -> intArrayOf(ramMb, cpuCount, diskGb)
+        }
+        ramMb = prefs.getInt(profileKey(name, "ram_mb"), defaults[0]).coerceIn(128, 2048)
+        cpuCount = prefs.getInt(profileKey(name, "cpu_count"), defaults[1]).coerceIn(1, 4)
+        diskGb = prefs.getInt(profileKey(name, "disk_gb"), defaults[2]).coerceIn(2, 32)
+        networkMode = prefs.getString(profileKey(name, "network_mode"), if (name == "Buildroot Minimal") "Isolated" else "User NAT") ?: "User NAT"
+    }
+
+    private fun saveProfileSettings(name: String) {
+        prefs.edit()
+            .putInt(profileKey(name, "ram_mb"), ramMb)
+            .putInt(profileKey(name, "cpu_count"), cpuCount)
+            .putInt(profileKey(name, "disk_gb"), diskGb)
+            .putString(profileKey(name, "network_mode"), networkMode)
+            .apply()
     }
 
     private fun showCreateProfileDialog() {
@@ -287,7 +316,15 @@ class MainActivity : Activity() {
                     name.isBlank() -> toast("Enter a profile name.")
                     name.length > 40 -> toast("Keep the name under 40 characters.")
                     name in builtInProfiles || name in customProfiles -> toast("That profile already exists.")
-                    else -> { customProfiles.add(name); profile = name; saveState(); drawPage(); toast("Profile saved on this device.") }
+                    else -> {
+                        saveProfileSettings(profile)
+                        customProfiles.add(name)
+                        profile = name
+                        saveProfileSettings(name)
+                        saveState()
+                        drawPage()
+                        toast("Profile saved on this device.")
+                    }
                 }
             }.show()
     }
