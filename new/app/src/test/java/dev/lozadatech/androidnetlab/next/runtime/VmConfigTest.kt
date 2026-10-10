@@ -45,6 +45,17 @@ class VmConfigTest {
     }
 
     @Test
+    fun unavailableRuntimeNeverPretendsToStartOrRunAGuest() {
+        val runtime = UnavailableQemuRuntime()
+        val config = VmConfig(name = "Test guest")
+
+        assertEquals(VmState.UNAVAILABLE, runtime.availability().state)
+        assertEquals(VmState.UNAVAILABLE, kotlinx.coroutines.runBlocking { runtime.start(config) }.state)
+        assertEquals(VmState.UNAVAILABLE, kotlinx.coroutines.runBlocking { runtime.stop(config.name) }.state)
+        assertEquals(VmState.UNAVAILABLE, runtime.status(config.name).state)
+    }
+
+    @Test
     fun profileNameValidationAcceptsTrimmedUniqueNames() {
         assertNull(validateVmProfileName("  Fedora Lab  ", listOf("Alpine Linux")))
     }
