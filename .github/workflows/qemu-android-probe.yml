@@ -63,15 +63,32 @@ jobs:
         run: |
           set -uo pipefail
           TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
-          mkdir -p qemu-android-build
+          CROSS_BIN="$RUNNER_TEMP/android-cross/bin"
+          mkdir -p "$CROSS_BIN" qemu-android-build
+          # QEMU's configure script needs an explicit cross prefix so Meson
+          # separates build-machine tools from the Android target compiler.
+          cat > "$CROSS_BIN/aarch64-linux-android-gcc" <<EOF
+          #!/usr/bin/env bash
+          exec "$TOOLCHAIN/bin/clang" --target=aarch64-linux-android24 "\$@"
+          EOF
+          cat > "$CROSS_BIN/aarch64-linux-android-g++" <<EOF
+          #!/usr/bin/env bash
+          exec "$TOOLCHAIN/bin/clang++" --target=aarch64-linux-android24 "\$@"
+          EOF
+          for tool in ar ranlib strip nm objcopy; do
+            ln -sf "$TOOLCHAIN/bin/llvm-$tool" "$CROSS_BIN/aarch64-linux-android-$tool"
+          done
+          chmod +x "$CROSS_BIN/aarch64-linux-android-gcc" "$CROSS_BIN/aarch64-linux-android-g++"
           cd qemu-android-build
           set +e
+          PKG_CONFIG_LIBDIR="$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/24/pkgconfig:$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/pkgconfig:$TOOLCHAIN/sysroot/usr/lib/pkgconfig:$TOOLCHAIN/sysroot/usr/share/pkgconfig" \
           "$QEMU_SOURCE_DIR/configure" \
-            --cc="$TOOLCHAIN/bin/clang --target=aarch64-linux-android24" \
-            --cxx="$TOOLCHAIN/bin/clang++ --target=aarch64-linux-android24" \
+            --cross-prefix="$CROSS_BIN/aarch64-linux-android-" \
             --host-cc=cc \
+            --cpu=aarch64 \
             --target-list=aarch64-softmmu \
             --without-default-features \
+            --enable-tcg \
             --disable-werror \
             --disable-docs \
             --disable-gtk \
