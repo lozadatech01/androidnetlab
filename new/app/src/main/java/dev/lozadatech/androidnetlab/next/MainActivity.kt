@@ -195,7 +195,7 @@ class MainActivity : Activity() {
                 addView(label(if (selected) "ACTIVE" else "SELECT", 8, muted, true))
             })
             panel.addView(label("Console preview", 11, 0xFF86EFAC.toInt()).apply { setPadding(0, dp(10), 0, dp(4)) })
-            panel.addView(label("No live console • runtime not connected", 9, muted))
+            panel.addView(label("Multi-guest execution is not available yet; open the single guest console in VM Manager.", 9, muted))
             val stacked = effectiveStacked()
             val lp = LinearLayout.LayoutParams(if (stacked) -1 else 0, if (stacked) 0 else -1, 1f)
             if (number > 1) { if (stacked) lp.topMargin = dp(5) else lp.marginStart = dp(5) }
@@ -203,7 +203,7 @@ class MainActivity : Activity() {
         }
         pageHost.addView(panels)
         if (showKeyboard) drawKeyboard(pageHost)
-        status = label("UI preview only • QEMU runtime not connected", 9, muted)
+        status = label("Multi-panel UI preview • the runtime currently supports one live guest", 9, muted)
         pageHost.addView(status)
     }
 
@@ -1224,7 +1224,7 @@ class MainActivity : Activity() {
             if (keepAwake) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             drawPage()
         })
-        body.addView(toggleRow("Auto-start last VM", "Startup behavior preview; no VM boots yet", autoStart) { autoStart = !autoStart; drawPage() })
+        body.addView(infoCard("Auto-start last VM", "Not active in this build", "Guest startup remains manual so QEMU and guest images are validated before every launch."))
         body.addView(section("PANEL LAYOUT"))
         listOf("Auto (portrait stacked)", "Side by side", "Stacked").forEachIndexed { index, title ->
             body.addView(chip(if (layoutMode == index) "✓ $title" else title) { layoutMode = index; drawPage() },
