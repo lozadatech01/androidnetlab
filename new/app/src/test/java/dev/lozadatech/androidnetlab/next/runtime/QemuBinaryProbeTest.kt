@@ -1,5 +1,10 @@
 package dev.lozadatech.androidnetlab.next.runtime
 
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,6 +22,37 @@ class QemuBinaryProbeTest {
         assertFalse(QemuBinaryProbe.isAarch64Elf(elfHeader(machine = 183, elfClass = 1)))
         assertFalse(QemuBinaryProbe.isAarch64Elf(elfHeader(machine = 183, dataEncoding = 2)))
         assertFalse(QemuBinaryProbe.isAarch64Elf(ByteArray(19)))
+    }
+
+    @Test
+    fun installsValidatedCandidateIntoAppPrivateRuntimeDirectory() {
+        val appFiles = Files.createTempDirectory("qemu-probe-install").toFile()
+        try {
+            val candidate = elfHeader(machine = 183)
+            val installed = QemuBinaryProbe.install(ByteArrayInputStream(candidate), appFiles)
+            assertTrue(installed.isFile)
+            assertTrue(installed.canExecute())
+            assertEquals(candidate.toList(), installed.readBytes().toList())
+        } finally {
+            appFiles.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun invalidImportPreservesPreviouslyInstalledBinary() {
+        val appFiles = Files.createTempDirectory("qemu-probe-preserve").toFile()
+        try {
+            val runtimeDir = File(appFiles, "runtime")
+            assertTrue(runtimeDir.mkdirs())
+            val installed = File(runtimeDir, "qemu-system-aarch64")
+            installed.writeText("previous-known-good")
+            org.junit.Assert.assertThrows(IOException::class.java) {
+                QemuBinaryProbe.install(ByteArrayInputStream("not an ELF".toByteArray()), appFiles)
+            }
+            assertEquals("previous-known-good", installed.readText())
+        } finally {
+            appFiles.deleteRecursively()
+        }
     }
 
     @Test
