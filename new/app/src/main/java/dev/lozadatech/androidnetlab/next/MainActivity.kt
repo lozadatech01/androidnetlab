@@ -244,6 +244,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
                     addView(label(name, 11, if (profile == name) blue else white, true))
                     addView(label(profileSummary(name), 9, muted))
+                    addView(label(profileDiskSummary(name), 9, profileDiskSummaryColor(name)).apply { setPadding(0, dp(2), 0, 0) })
                 })
                 addView(chip(if (profile == name) "✓ Selected" else "Select") {
                     if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
@@ -623,6 +624,17 @@ class MainActivity : Activity() {
         val network = prefs.getString(profileKey(name, "network_mode"), prefs.getString(legacyProfileKey(name, "network_mode"), if (name == profile) networkMode else if (name == "Buildroot Minimal") "Isolated" else "User NAT")) ?: "User NAT"
         val selected = if (name == profile) " • selected" else ""
         return "$memory MiB • $cpus vCPU • $disk GiB • $network$selected"
+    }
+
+    private fun profileDiskSummary(name: String): String {
+        if (hasLegacyDiskPathCollision(name)) return "Disk blocked • legacy storage path conflict"
+        val disk = virtualDiskFile(name)
+        return if (disk.isFile) "Disk file • ${formatBytes(disk.length())}" else "No disk file yet"
+    }
+
+    private fun profileDiskSummaryColor(name: String): Int {
+        if (hasLegacyDiskPathCollision(name)) return 0xFFFCA5A5.toInt()
+        return if (virtualDiskFile(name).isFile) 0xFF86EFAC.toInt() else muted
     }
 
     private fun showRuntimeUnavailableDialog() {
