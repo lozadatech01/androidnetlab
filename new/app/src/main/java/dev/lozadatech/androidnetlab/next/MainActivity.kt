@@ -244,7 +244,8 @@ class MainActivity : Activity() {
         })
         body.addView(label("*Bridge support depends on Android/device networking.", 9, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
         body.addView(chip("+ Create VM profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(40)))
-        body.addView(chip("▶ Start selected VM") { toast("Profile saved. QEMU is not installed yet, so no guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        body.addView(chip("Create virtual disk (${diskGb} GB)") { createVirtualDisk() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        body.addView(chip("▶ Start selected VM") { toast("Disk/profile are local, but QEMU is not installed yet. No guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
     }
@@ -289,6 +290,23 @@ class MainActivity : Activity() {
                     else -> { customProfiles.add(name); profile = name; saveState(); drawPage(); toast("Profile saved on this device.") }
                 }
             }.show()
+    }
+    private fun createVirtualDisk() {
+        val safeName = profile.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").ifBlank { "vm" }
+        val vmDir = java.io.File(filesDir, "vms/$safeName")
+        val disk = java.io.File(vmDir, "disk.img")
+        val requestedBytes = diskGb.toLong() * 1024L * 1024L * 1024L
+        try {
+            if (disk.exists()) { toast("Disk already exists; existing data was preserved."); return }
+            if (requestedBytes > filesDir.usableSpace - 64L * 1024L * 1024L) { toast("Not enough app storage. Free space or reduce disk size."); return }
+            if (!vmDir.exists() && !vmDir.mkdirs()) throw java.io.IOException("Could not create VM storage directory")
+            java.io.RandomAccessFile(disk, "rw").use { it.setLength(requestedBytes) }
+            java.io.File(vmDir, "profile.txt").writeText("name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n")
+            toast("Created private raw disk: ${diskGb} GB logical size.")
+        } catch (e: Exception) {
+            if (disk.exists() && disk.length() == 0L) disk.delete()
+            toast("Disk creation failed: ${e.message ?: "storage error"}")
+        }
     }
     private fun drawSettings() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
