@@ -53,8 +53,9 @@ class MainActivity : Activity() {
     private val importRootfsRequestCode = 7130
     private var qemuProbeVerified = false
     private var qemuProbeRunning = false
+    private var guestArtifactImportRunning = false
     private var qemuProbeDetail = "No Android ARM64 QEMU binary imported."
-    private var activeVmState = VmState.UNAVAILABLE
+    @Volatile private var activeVmState = VmState.UNAVAILABLE
     private var activeVmStateDetail = "No guest has been started."
     @Volatile private var activeGuestProcess: Process? = null
     @Volatile private var activeGuestInput: java.io.OutputStream? = null
