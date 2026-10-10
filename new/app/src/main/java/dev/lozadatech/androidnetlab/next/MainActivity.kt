@@ -41,6 +41,7 @@ class MainActivity : Activity() {
     private lateinit var pageHost: LinearLayout
     private lateinit var status: TextView
     private lateinit var commandInput: EditText
+    private var commandDraft = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +96,7 @@ class MainActivity : Activity() {
     }
 
     private fun drawPage() {
+        if (::commandInput.isInitialized) commandDraft = commandInput.text.toString()
         saveState()
         pageHost.removeAllViews()
         when (page) {
@@ -182,6 +184,12 @@ class MainActivity : Activity() {
             hint = if (keyboardMode == 0) "Command input (runtime later)" else "Tap to open Android keyboard"
             setHintTextColor(muted); setTextColor(white); textSize = 12f; setSingleLine(true)
             setPadding(dp(8), dp(4), dp(8), dp(4)); setBackgroundColor(surface)
+            setText(commandDraft)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { commandDraft = s?.toString() ?: "" }
+                override fun afterTextChanged(s: android.text.Editable?) = Unit
+            })
             setOnClickListener { if (keyboardMode == 1) (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT) }
         }
         host.addView(commandInput, LinearLayout.LayoutParams(-1, dp(if (landscape()) 30 else 38)))
