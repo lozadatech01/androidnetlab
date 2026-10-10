@@ -12,7 +12,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
+import android.widget.TextView\nimport dev.lozadatech.androidnetlab.next.runtime.validateVmProfileName
 
 class MainActivity : Activity() {
     private val bg = 0xFF080B12.toInt()
@@ -416,19 +416,17 @@ class MainActivity : Activity() {
             .setView(input).setNegativeButton("Cancel", null)
             .setPositiveButton("Save profile") { _, _ ->
                 val name = input.text.toString().trim()
-                when {
-                    name.isBlank() -> toast("Enter a profile name.")
-                    name.any { it.isISOControl() } -> toast("Profile names cannot contain control characters or line breaks.")
-                    (builtInProfiles + customProfiles).any { it.equals(name, ignoreCase = true) } -> toast("That profile already exists.")
-                    else -> {
-                        saveProfileSettings(profile)
-                        customProfiles.add(name)
-                        profile = name
-                        saveProfileSettings(name)
-                        saveState()
-                        drawPage()
-                        toast("Profile saved on this device.")
-                    }
+                val validationError = validateVmProfileName(name, builtInProfiles + customProfiles)
+                if (validationError != null) {
+                    toast(validationError)
+                } else {
+                    saveProfileSettings(profile)
+                    customProfiles.add(name)
+                    profile = name
+                    saveProfileSettings(name)
+                    saveState()
+                    drawPage()
+                    toast("Profile saved on this device.")
                 }
             }.show()
     }
