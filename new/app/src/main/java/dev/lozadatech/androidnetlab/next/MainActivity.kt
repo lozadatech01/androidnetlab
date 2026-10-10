@@ -109,17 +109,27 @@ class MainActivity : Activity() {
 
     private fun drawOverview() {
         pageHost.addView(label("OVERVIEW", 10, muted, true).apply { setPadding(0, dp(5), 0, dp(6)) })
+        pageHost.addView(infoCard("Selected VM profile", profile, "$ramMb MiB memory • $cpuCount vCPU • $diskGb GiB virtual disk"))
+        pageHost.addView(infoCard("Network adapter", networkMode, when (networkMode) {
+            "Isolated" -> "Saved configuration only; guest networking is not active."
+            "Bridge*" -> "Planned option only; Android bridge networking is not implemented."
+            else -> "Saved configuration only; NAT networking is not active."
+        }))
+        val disk = virtualDiskFile(profile)
+        val diskState = when {
+            hasLegacyDiskPathCollision(profile) -> "Blocked: storage path conflict"
+            disk.isFile -> "Disk file exists • ${formatBytes(disk.length())}"
+            else -> "No disk file created"
+        }
+        pageHost.addView(infoCard("Local storage", diskState, "A disk file is not an installed operating system or a bootable VM."))
+        pageHost.addView(infoCard("Runtime status", "Not connected", "QEMU is not integrated; Start VM cannot boot a guest yet."))
         pageHost.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(surface)
-            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
-            addView(label("WORKSPACE CANVAS", 12, muted, true).apply { gravity = Gravity.CENTER })
-            addView(label("One large blank window", 10, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
+            orientation = LinearLayout.HORIZONTAL
+            addView(chip("Manage VMs") { page = 2; render() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(4) })
+            addView(chip("Multi-window") { page = 1; render() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginStart = dp(4) })
         })
-        pageHost.addView(label("Network topology and live VM status will appear here after runtime integration.", 10, muted).apply { setPadding(dp(3), dp(6), dp(3), dp(4)) })
+        pageHost.addView(label("This overview reports saved settings and local files; it does not report live guest telemetry.", 9, muted).apply { setPadding(dp(3), dp(6), dp(3), dp(4)) })
     }
-
     private fun drawMultiWindow() {
         pageHost.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
