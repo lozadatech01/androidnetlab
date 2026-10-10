@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential bc cpio file git rsync unzip wget python3 qemu-system-arm
+        run: sudo apt-get update && sudo apt-get install -y build-essential bc cpio file git rsync unzip wget python3 python3-pexpect qemu-system-arm
       - name: Build minimal AArch64 guest
         run: bash vm/build-guest.sh
       - name: Boot guest in QEMU and capture smoke metrics
         run: bash vm/test-guest.sh
-      - name: Upload guest image and test reports
+      - name: Collect in-guest process, memory, and network diagnostics\n        run: python3 vm/guest-diagnostics.py\n      - name: Upload guest image and test reports
         uses: actions/upload-artifact@v4
         with:
           name: androidnetlab-linux-guest-aarch64
