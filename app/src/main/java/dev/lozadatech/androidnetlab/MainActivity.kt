@@ -94,13 +94,13 @@ class MainActivity : Activity() {
                 val target = uniqueFile(vmDir, sanitize(displayName))
                 copyUriToFile(uri, target)
                 runOnUiThread {
-                    status.text = "Imported \${target.name} into app-private storage."
+                    status.text = "Imported ${target.name} into app-private storage."
                     refreshVmList(); updateMetrics()
                     Toast.makeText(this, "VM disk imported", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    status.text = "Import failed: \${e.message ?: e.javaClass.simpleName}"
+                    status.text = "Import failed: ${e.message ?: e.javaClass.simpleName}"
                     Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
                 }
             }
@@ -133,10 +133,10 @@ class MainActivity : Activity() {
     }
 
     private fun createCopy(source: File) {
-        status.text = "Copying \${source.name}…"
+        status.text = "Copying ${source.name}…"
         io.execute {
             try {
-                val requested = "\${source.nameWithoutExtension}-copy.\${source.extension}"
+                val requested = "${source.nameWithoutExtension}-copy.${source.extension}"
                 val target = uniqueFile(vmDir, requested)
                 val temp = File(vmDir, target.name + ".partial")
                 try {
@@ -160,12 +160,12 @@ class MainActivity : Activity() {
                     throw e
                 }
                 runOnUiThread {
-                    status.text = "Created independent disk copy: \${target.name}"
+                    status.text = "Created independent disk copy: ${target.name}"
                     refreshVmList(); updateMetrics()
                     Toast.makeText(this, "VM disk copy created", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                runOnUiThread { status.text = "Copy failed: \${e.message ?: e.javaClass.simpleName}" }
+                runOnUiThread { status.text = "Copy failed: ${e.message ?: e.javaClass.simpleName}" }
             }
         }
     }
@@ -187,7 +187,7 @@ class MainActivity : Activity() {
                 setBackgroundColor(0xFF182438.toInt())
             }
             card.addView(label(file.name, 15f, 0xFFF4F7FC.toInt(), true))
-            card.addView(label("\${humanSize(file.length())} · \${file.extension.uppercase(Locale.ROOT)} image", 12f, 0xFF9EADC2.toInt()).apply { setPadding(0, dp(4), 0, dp(8)) })
+            card.addView(label("${humanSize(file.length())} · ${file.extension.uppercase(Locale.ROOT)} image", 12f, 0xFF9EADC2.toInt()).apply { setPadding(0, dp(4), 0, dp(8)) })
             card.addView(actionButton("Create copy") { createCopy(file) })
             vmList.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
         }
@@ -236,9 +236,9 @@ class MainActivity : Activity() {
         val elapsed = (System.currentTimeMillis() - startTime) / 1000
         val vmFiles = vmDir.listFiles()?.filter { it.isFile && !it.name.endsWith(".partial") }.orEmpty()
         val diskBytes = vmFiles.sumOf { it.length() }
-        metrics.text = "DEVICE MEMORY\\nTotal RAM: \${mem.totalMem.mb()} MiB\\nAvailable RAM: \${mem.availMem.mb()} MiB\\nLow-memory state: \${if (mem.lowMemory) "YES" else "No"}\\n\\n" +
-            "APP MEMORY\\nApp PSS: \${String.format(Locale.US, "%.1f", pssMb)} MiB\\nRuntime heap used: $appUsed MiB\\nRuntime heap max: \${runtime.maxMemory() / (1024 * 1024)} MiB\\n\\n" +
-            "VM LIBRARY\\nStored disk files: \${vmFiles.size}\\nTotal disk data: \${humanSize(diskBytes)}\\nSession uptime: \${elapsed}s\\n\\n" +
+        metrics.text = "DEVICE MEMORY\\nTotal RAM: ${mem.totalMem.mb()} MiB\\nAvailable RAM: ${mem.availMem.mb()} MiB\\nLow-memory state: ${if (mem.lowMemory) "YES" else "No"}\\n\\n" +
+            "APP MEMORY\\nApp PSS: ${String.format(Locale.US, "%.1f", pssMb)} MiB\\nRuntime heap used: $appUsed MiB\\nRuntime heap max: ${runtime.maxMemory() / (1024 * 1024)} MiB\\n\\n" +
+            "VM LIBRARY\\nStored disk files: ${vmFiles.size}\\nTotal disk data: ${humanSize(diskBytes)}\\nSession uptime: ${elapsed}s\\n\\n" +
             "RUNTIME\\nVM execution is not integrated yet. Imported images are stored and can be duplicated, but cannot boot from this prototype yet."
     }
 
