@@ -163,8 +163,8 @@ class MainActivity : Activity() {
                 addView(label("VM $number", 12, if (selected) blue else white, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
                 addView(label(if (selected) "ACTIVE" else "SELECT", 8, muted, true))
             })
-            panel.addView(label("Console canvas", 11, 0xFF86EFAC.toInt()).apply { setPadding(0, dp(10), 0, dp(4)) })
-            panel.addView(label("Runtime not connected", 9, muted))
+            panel.addView(label("Console preview", 11, 0xFF86EFAC.toInt()).apply { setPadding(0, dp(10), 0, dp(4)) })
+            panel.addView(label("No live console • runtime not connected", 9, muted))
             val stacked = effectiveStacked()
             val lp = LinearLayout.LayoutParams(if (stacked) -1 else 0, if (stacked) 0 else -1, 1f)
             if (number > 1) { if (stacked) lp.topMargin = dp(5) else lp.marginStart = dp(5) }
