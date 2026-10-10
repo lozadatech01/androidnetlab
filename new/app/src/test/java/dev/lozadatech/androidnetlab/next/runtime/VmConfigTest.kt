@@ -55,7 +55,7 @@ class VmConfigTest {
         assertEquals("Keep the name under 40 characters.", validateVmProfileName("x".repeat(41), emptyList()))
         assertEquals(
             "Profile names cannot contain control characters or line breaks.",
-            validateVmProfileName("Lab\\nOne", emptyList())
+            validateVmProfileName("Lab\nOne", emptyList())
         )
         assertEquals("That profile already exists.", validateVmProfileName("debian linux", listOf("Debian Linux")))
     }
