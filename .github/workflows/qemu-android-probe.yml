@@ -258,11 +258,38 @@ jobs:
           result=$?
           set -e
           printf '%s\n' "$result" > qemu-android-build-exit-code.txt
-          if [ "$result" -eq 0 ]; then
-            find qemu-android-build -type f -name 'qemu-system-aarch64' -exec file {} \; | tee qemu-android-binary.txt
-            echo "BUILD_RESULT=passed; device execution still unverified" | tee qemu-android-build-result.txt
+          if [ "$result" -eq 0 ] && [ -s qemu-android-build/qemu-system-aarch64 ]; then
+            {
+              echo "Candidate Android ARM64 QEMU binary:"
+              file qemu-android-build/qemu-system-aarch64
+              sha256sum qemu-android-build/qemu-system-aarch64
+              readelf -h qemu-android-build/qemu-system-aarch64
+              echo
+              echo "Dynamic dependencies (if any):"
+              readelf -d qemu-android-build/qemu-system-aarch64 || true
+            } | tee qemu-android-binary.txt
+            cp qemu-android-build/qemu-system-aarch64 qemu-system-aarch64-android-arm64
+            echo "BUILD_RESULT=passed; Android execution and guest boot still unverified" | tee qemu-android-build-result.txt
+            {
+              echo "### Candidate QEMU build"
+              echo "QEMU produced an Android-target ELF. This is a cross-build result only, not a device execution or guest-boot pass."
+              echo '~~~text'
+              cat qemu-android-binary.txt
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$result" -eq 0 ]; then
+            echo "BUILD_RESULT=blocked: ninja succeeded but expected binary was not produced" | tee qemu-android-build-result.txt
+            echo "::warning::QEMU build command completed without qemu-system-aarch64 at the expected path."
           else
             echo "BUILD_RESULT=blocked (inspect qemu-android-build.log)" | tee qemu-android-build-result.txt
+            {
+              echo "### QEMU Android build diagnostics"
+              echo "Build exit code: $result"
+              echo '~~~text'
+              tail -n 100 qemu-android-build.log
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::QEMU Android build is blocked; inspect the summary and uploaded logs."
           fi
 
       - name: Upload all probe evidence
@@ -285,5 +312,6 @@ jobs:
             qemu-android-build-exit-code.txt
             qemu-android-build-result.txt
             qemu-android-binary.txt
+            qemu-system-aarch64-android-arm64
           if-no-files-found: ignore
           retention-days: 14
