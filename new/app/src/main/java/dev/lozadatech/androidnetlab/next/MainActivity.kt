@@ -725,25 +725,72 @@ class MainActivity : Activity() {
     }
 
     private fun qemuBinaryFile() = java.io.File(filesDir, "runtime/qemu-system-aarch64")
+    private fun guestKernelFile() = java.io.File(filesDir, "guests/buildroot-aarch64/Image")
+    private fun guestRootfsBaseFile() = java.io.File(filesDir, "guests/buildroot-aarch64/rootfs.ext2")
 
     private fun qemuRuntimeSubtitle(): String = when {
         qemuProbeRunning -> "Smoke test running"
+        activeVmState == VmState.STARTING -> "Starting guest • ${activeGuestProfile ?: profile}"
+        activeVmState == VmState.RUNNING -> "Guest running • ${activeGuestProfile ?: profile}"
+        activeVmState == VmState.STOPPING -> "Stopping guest • ${activeGuestProfile ?: profile}"
+        activeVmState == VmState.FAILED -> "Guest launch/boot failed"
         qemuProbeVerified -> "Executable smoke test passed"
         qemuBinaryFile().isFile -> "Candidate installed • not validated"
         else -> "Not installed"
     }
 
+    private fun runtimeStatusDetail(): String = when (activeVmState) {
+        VmState.STARTING, VmState.RUNNING, VmState.STOPPING, VmState.FAILED -> activeVmStateDetail
+        else -> buildString {
+            append(qemuProbeDetail)
+            append("\nKernel: ")
+            append(if (GuestArtifactStore.isAarch64KernelImage(guestKernelFile())) "AArch64 Image ready" else "not imported")
+            append("\nRootfs: ")
+            append(if (GuestArtifactStore.isExt2Filesystem(guestRootfsBaseFile())) "ext2 image ready" else "not imported")
+        }
+    }
+
+    private fun formatMiB(bytes: Long): String =
+        String.format(java.util.Locale.ROOT, "%.1f MiB", bytes.toDouble() / (1024.0 * 1024.0))
+
+    private fun isGuestActive(): Boolean =
+        activeVmState == VmState.STARTING || activeVmState == VmState.RUNNING ||
+            activeVmState == VmState.STOPPING || activeGuestProcess != null
+
     private fun confirmImportQemuBinary() {
+        if (isGuestActive() || qemuProbeRunning) {
+            toast("Stop the guest and finish the current runtime action first.")
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Import Android ARM64 QEMU?")
             .setMessage(
-                "Choose the qemu-system-aarch64-android-arm64 executable from the AndroidNetLab QEMU CI artifact. " +
+                "Choose qemu-system-aarch64-android-arm64 from the AndroidNetLab QEMU CI artifact. " +
                     "The app copies it into private storage and runs only --version, -machine help, and -accel help. " +
                     "Only import a binary from a source you trust. Android may forbid executing a binary from app-private storage. " +
                     "This test does not boot a guest or enable networking."
             )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Choose file") { _, _ -> launchQemuFilePicker() }
+            .show()
+    }
+
+    private fun confirmImportGuestArtifact(kernel: Boolean) {
+        if (isGuestActive() || guestArtifactImportRunning) {
+            toast("Stop the guest and finish the current runtime action first.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (kernel) "Import Buildroot ARM64 kernel?" else "Import Buildroot rootfs?")
+            .setMessage(
+                if (kernel) {
+                    "Choose the Image file from the AndroidNetLab Linux guest CI artifact. The app validates the AArch64 Image header."
+                } else {
+                    "Choose rootfs.ext2 from the AndroidNetLab Linux guest CI artifact. The app validates the ext2 magic and keeps a separate writable copy for each VM profile."
+                }
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Choose file") { _, _ -> launchGuestArtifactFilePicker(kernel) }
             .show()
     }
 
@@ -781,7 +828,7 @@ class MainActivity : Activity() {
     }
 
     private fun importQemuCandidate(uri: android.net.Uri) {
-        if (activeGuestProcess != null || activeVmState == VmState.RUNNING || activeVmState == VmState.STARTING) {
+        if (isGuestActive()) {
             toast("Stop the guest before replacing QEMU.")
             return
         }
@@ -801,10 +848,10 @@ class MainActivity : Activity() {
                     qemuProbeVerified = result.success
                     qemuProbeDetail = result.detail
                     if (!result.sha256.isNullOrBlank()) qemuProbeDetail += "\nSHA-256: ${result.sha256}"
-                    if (result.success && activeGuestProcess == null) {
+                    if (result.success) {
                         activeVmState = VmState.STOPPED
                         activeVmStateDetail = "QEMU executable passed its app-sandbox smoke test; no guest is running."
-                    } else if (!result.success) {
+                    } else {
                         activeVmState = VmState.UNAVAILABLE
                         activeVmStateDetail = result.detail
                     }
@@ -826,7 +873,7 @@ class MainActivity : Activity() {
     }
 
     private fun importGuestArtifact(uri: android.net.Uri, kernel: Boolean) {
-        if (activeGuestProcess != null || activeVmState == VmState.RUNNING || activeVmState == VmState.STARTING || guestArtifactImportRunning) {
+        if (isGuestActive() || guestArtifactImportRunning) {
             toast("Stop the guest and finish any current import first.")
             return
         }
@@ -860,19 +907,297 @@ class MainActivity : Activity() {
             }
         }, if (kernel) "guest-kernel-import" else "guest-rootfs-import").start()
     }
-    private fun showRuntimeUnavailableDialog() {
-        val message = if (qemuProbeVerified) {
-            "The QEMU executable passed its app-sandbox smoke test. However, AndroidNetLab does not yet connect guest kernel/rootfs artifacts to a managed VM lifecycle or live serial console. No guest has been started.\n\nSelected profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode"
-        } else {
-            "Profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode\n\nNo validated QEMU executable is available in this app session. Import and test the Android ARM64 candidate first. No guest has been started."
+
+    private fun startSelectedVm() {
+        if (isGuestActive()) {
+            showGuestConsoleDialog()
+            return
         }
-        AlertDialog.Builder(this)
-            .setTitle(if (qemuProbeVerified) "Guest boot is not connected yet" else "VM runtime not validated")
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
+        if (qemuProbeRunning || guestArtifactImportRunning) {
+            toast("Wait for the current runtime operation to finish.")
+            return
+        }
+        if (!qemuProbeVerified || !qemuBinaryFile().isFile) {
+            AlertDialog.Builder(this)
+                .setTitle("QEMU is not validated")
+                .setMessage("Import the Android ARM64 QEMU candidate and pass the app-sandbox smoke test before starting a guest.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Import / test QEMU") { _, _ -> confirmImportQemuBinary() }
+                .show()
+            return
+        }
+
+        val kernel = guestKernelFile()
+        val baseRootfs = guestRootfsBaseFile()
+        val kernelReady = GuestArtifactStore.isAarch64KernelImage(kernel)
+        val rootfsReady = GuestArtifactStore.isExt2Filesystem(baseRootfs)
+        if (!kernelReady || !rootfsReady) {
+            val builder = AlertDialog.Builder(this)
+                .setTitle("Guest files are missing")
+                .setMessage("Import both the Buildroot AArch64 kernel Image and rootfs.ext2 from the Linux guest CI artifact.")
+                .setNegativeButton("Cancel", null)
+            if (!kernelReady) builder.setPositiveButton("Import kernel") { _, _ -> confirmImportGuestArtifact(kernel = true) }
+            if (!rootfsReady) builder.setNeutralButton("Import rootfs") { _, _ -> confirmImportGuestArtifact(kernel = false) }
+            builder.show()
+            return
+        }
+        if (hasLegacyDiskPathCollision(profile)) {
+            toast("Guest start blocked by a profile storage path conflict.")
+            return
+        }
+
+        val selectedProfile = profile
+        val selectedMemory = ramMb
+        val selectedCpus = cpuCount
+        val binary = qemuBinaryFile()
+        val disk = virtualDiskFile(selectedProfile)
+        val vmDirectory = disk.parentFile ?: run { toast("Invalid VM storage path."); return }
+        val dataDisk = disk.takeIf { it.isFile }
+
+        activeGuestProfile = selectedProfile
+        stopRequested = false
+        activeVmState = VmState.STARTING
+        activeVmStateDetail = "Preparing a private writable rootfs copy, then waiting for the Buildroot serial-ready marker."
+        synchronized(guestConsoleLog) {
+            guestConsoleLog.setLength(0)
+            guestConsoleLog.append("[AndroidNetLab] Starting $selectedProfile in headless serial-only mode.\n")
+            guestConsoleLog.append("[AndroidNetLab] Guest networking is disabled in this first boot path.\n")
+        }
+        drawPage()
+        showGuestConsoleDialog()
+
+        Thread({
+            var process: Process? = null
+            var ready = false
+            try {
+                val writableRootfs = GuestArtifactStore.rootfsForProfile(baseRootfs, vmDirectory, filesDir.usableSpace)
+                if (stopRequested) {
+                    stopRequested = false
+                    updateGuestState(VmState.STOPPED, "Guest launch cancelled before QEMU started.")
+                    return@Thread
+                }
+                val command = QemuCommandBuilder.build(
+                    QemuCommandBuilder.Config(
+                        executable = binary,
+                        kernelImage = kernel,
+                        rootfsImage = writableRootfs,
+                        dataDisk = dataDisk,
+                        memoryMiB = selectedMemory,
+                        vcpus = selectedCpus
+                    )
+                )
+                val startedProcess = ProcessBuilder(command)
+                    .directory(filesDir)
+                    .redirectErrorStream(true)
+                    .start()
+                process = startedProcess
+                activeGuestProcess = startedProcess
+                activeGuestInput = startedProcess.outputStream
+                if (stopRequested) startedProcess.destroy()
+                appendGuestConsole("[AndroidNetLab] QEMU process started.\n")
+
+                Thread({
+                    try {
+                        Thread.sleep(180_000L)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                    if (activeGuestProcess === startedProcess && activeVmState == VmState.STARTING && !stopRequested) {
+                        updateGuestState(VmState.FAILED, "Guest did not reach a Buildroot login/ready marker within 180 seconds; QEMU was stopped.")
+                        appendGuestConsole("\n[AndroidNetLab] Boot readiness timed out; stopping QEMU.\n")
+                        startedProcess.destroy()
+                        Thread({
+                            try {
+                                if (!startedProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) startedProcess.destroyForcibly()
+                            } catch (_: Exception) {
+                                startedProcess.destroyForcibly()
+                            }
+                        }, "qemu-timeout-cleanup").start()
+                    }
+                }, "qemu-boot-readiness-timeout").apply { isDaemon = true; start() }
+
+                startedProcess.inputStream.bufferedReader().use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        appendGuestConsole(line + "\n")
+                        if (!ready && !stopRequested && isGuestReadyMarker(line)) {
+                            ready = true
+                            updateGuestState(
+                                VmState.RUNNING,
+                                "Buildroot guest reached its serial-ready marker. One guest is active; no virtual NIC is attached."
+                            )
+                        }
+                    }
+                }
+                val exitCode = startedProcess.waitFor()
+                val wasRequestedStop = stopRequested
+                if (activeGuestProcess === startedProcess) activeGuestProcess = null
+                if (activeGuestInput === startedProcess.outputStream) activeGuestInput = null
+                stopRequested = false
+                activeVmState = when {
+                    wasRequestedStop -> VmState.STOPPED
+                    ready && exitCode == 0 -> VmState.STOPPED
+                    else -> VmState.FAILED
+                }
+                activeVmStateDetail = when {
+                    wasRequestedStop -> "QEMU stopped on request. If the guest did not run poweroff first, filesystem writes may not be clean."
+                    ready && exitCode == 0 -> "Guest process exited with code 0 after reaching readiness."
+                    ready -> "Guest process exited unexpectedly with code $exitCode."
+                    else -> "QEMU exited with code $exitCode before the guest readiness marker."
+                }
+                appendGuestConsole("\n[AndroidNetLab] QEMU exited with code $exitCode.\n")
+                if (!isFinishing && ::pageHost.isInitialized) runOnUiThread { drawPage() }
+            } catch (error: Exception) {
+                process?.destroyForcibly()
+                if (activeGuestProcess === process) activeGuestProcess = null
+                activeGuestInput = null
+                stopRequested = false
+                val detail = "QEMU launch failed: ${error.javaClass.simpleName}: ${error.message ?: "no detail"}. Check Android execution policy and imported image files."
+                updateGuestState(VmState.FAILED, detail)
+                appendGuestConsole("\n[AndroidNetLab] $detail\n")
+            }
+        }, "qemu-single-guest-runtime").start()
     }
 
+    private fun isGuestReadyMarker(line: String): Boolean =
+        line.contains("Welcome to Buildroot", ignoreCase = true) ||
+            line.contains("buildroot login:", ignoreCase = true) ||
+            Regex("login:\\s*$", RegexOption.IGNORE_CASE).containsMatchIn(line)
+
+    private fun updateGuestState(state: VmState, detail: String) {
+        activeVmState = state
+        activeVmStateDetail = detail
+        if (!isFinishing) runOnUiThread { if (::pageHost.isInitialized) drawPage() }
+    }
+
+    private fun appendGuestConsole(chunk: String) {
+        runOnUiThread {
+            synchronized(guestConsoleLog) {
+                if (guestConsoleLog.length + chunk.length > 64 * 1024) {
+                    val excess = guestConsoleLog.length + chunk.length - 64 * 1024
+                    guestConsoleLog.delete(0, excess.coerceAtMost(guestConsoleLog.length))
+                }
+                guestConsoleLog.append(chunk)
+                guestConsoleTextView?.text = guestConsoleLog.toString()
+            }
+            guestConsoleScrollView?.post { guestConsoleScrollView?.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun showGuestConsoleDialog() {
+        if (guestConsoleDialog?.isShowing == true) return
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(3), dp(8), dp(4))
+        }
+        val console = TextView(this).apply {
+            setTextColor(0xFFB7F7C7.toInt())
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            text = synchronized(guestConsoleLog) { guestConsoleLog.toString() }
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+        }
+        guestConsoleTextView = console
+        val scroll = ScrollView(this).apply {
+            addView(console)
+            setBackgroundColor(0xFF05080D.toInt())
+        }
+        guestConsoleScrollView = scroll
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(260), 1f))
+        panel.addView(label("Type a guest command and send Enter. Use 'poweroff' inside Buildroot for a clean guest shutdown.", 9, muted)
+            .apply { setPadding(0, dp(5), 0, dp(4)) })
+        val input = EditText(this).apply {
+            hint = "Serial input (e.g. poweroff)"
+            setSingleLine(true)
+            setTextColor(white)
+            setHintTextColor(muted)
+            textSize = 12f
+        }
+        panel.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(input, LinearLayout.LayoutParams(0, dp(42), 1f))
+            addView(chip("Send") {
+                val value = input.text.toString()
+                if (value.isNotBlank()) {
+                    sendGuestConsoleInput(value)
+                    input.text.clear()
+                }
+            }, LinearLayout.LayoutParams(dp(72), dp(42)).apply { marginStart = dp(5) })
+        })
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                val value = input.text.toString()
+                if (value.isNotBlank()) {
+                    sendGuestConsoleInput(value)
+                    input.text.clear()
+                }
+                true
+            } else false
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Serial console • ${activeGuestProfile ?: profile}")
+            .setView(panel)
+            .setPositiveButton("Stop VM", null)
+            .setNegativeButton("Close", null)
+            .create()
+        guestConsoleDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { stopSelectedVm() }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { dialog.dismiss() }
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.96f).toInt(),
+                (resources.displayMetrics.heightPixels * 0.78f).toInt()
+            )
+        }
+        dialog.setOnDismissListener {
+            if (guestConsoleDialog === dialog) {
+                guestConsoleDialog = null
+                guestConsoleTextView = null
+                guestConsoleScrollView = null
+            }
+        }
+        dialog.show()
+    }
+
+    private fun sendGuestConsoleInput(command: String) {
+        val output = activeGuestInput
+        if (activeGuestProcess == null || output == null) {
+            toast("No active guest serial input.")
+            return
+        }
+        try {
+            output.write((command + "\n").toByteArray(Charsets.UTF_8))
+            output.flush()
+            appendGuestConsole("> $command\n")
+        } catch (error: Exception) {
+            appendGuestConsole("[AndroidNetLab] Could not send serial input: ${error.message ?: "I/O error"}\n")
+        }
+    }
+
+    private fun stopSelectedVm() {
+        if (!isGuestActive()) {
+            toast("No active guest to stop.")
+            return
+        }
+        stopRequested = true
+        updateGuestState(VmState.STOPPING, "Stop requested. Prefer 'poweroff' inside the guest before forcing the process to exit.")
+        appendGuestConsole("\n[AndroidNetLab] Stop requested.\n")
+        val process = activeGuestProcess
+        if (process == null) return // Startup thread will observe stopRequested before launch.
+        process.destroy()
+        Thread({
+            try {
+                if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                }
+            } catch (_: Exception) {
+                process.destroyForcibly()
+            }
+        }, "qemu-stop-cleanup").start()
+    }
     private fun drawSettings() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
         body.addView(label("LAB SETTINGS", 11, muted, true))
