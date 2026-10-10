@@ -22,7 +22,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang pkg-config python3 python3-venv ninja-build meson libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev libfdt-dev file binutils
+          sudo apt-get install -y build-essential clang pkg-config python3 python3-venv ninja-build meson cmake libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev libfdt-dev file binutils autoconf automake libtool
 
       - name: Fetch pinned Android NDK
         shell: bash
@@ -46,6 +46,132 @@ jobs:
           readelf -h android-smoke | tee android-elf-header.txt
           grep -q 'AArch64' android-elf-header.txt
 
+      - name: Build minimal Android-target libraries
+        shell: bash
+        env:
+          ANDROID_API: "24"
+        run: |
+          set -euo pipefail
+          export TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export ANDROID_DEPS_PREFIX="$RUNNER_TEMP/android-prefix"
+          export CROSS_BIN="$RUNNER_TEMP/android-cross/bin"
+          mkdir -p "$ANDROID_DEPS_PREFIX" "$CROSS_BIN" android-deps-src
+          echo "ANDROID_DEPS_PREFIX=$ANDROID_DEPS_PREFIX" >> "$GITHUB_ENV"
+          echo "CROSS_BIN=$CROSS_BIN" >> "$GITHUB_ENV"
+          {
+            set -x
+            cat > "$CROSS_BIN/aarch64-linux-android-gcc" <<EOF
+          #!/usr/bin/env bash
+          exec "$TOOLCHAIN/bin/clang" --target=aarch64-linux-android$ANDROID_API "\$@"
+          EOF
+            cat > "$CROSS_BIN/aarch64-linux-android-g++" <<EOF
+          #!/usr/bin/env bash
+          exec "$TOOLCHAIN/bin/clang++" --target=aarch64-linux-android$ANDROID_API "\$@"
+          EOF
+            for tool in ar ranlib strip nm objcopy; do
+              ln -sf "$TOOLCHAIN/bin/llvm-$tool" "$CROSS_BIN/aarch64-linux-android-$tool"
+            done
+            cat > "$CROSS_BIN/aarch64-linux-android-pkg-config" <<EOF
+          #!/usr/bin/env bash
+          export PKG_CONFIG_PATH=
+          export PKG_CONFIG_LIBDIR="$ANDROID_DEPS_PREFIX/lib/pkgconfig:$ANDROID_DEPS_PREFIX/share/pkgconfig"
+          exec /usr/bin/pkg-config "\$@"
+          EOF
+            chmod +x "$CROSS_BIN/aarch64-linux-android-gcc" "$CROSS_BIN/aarch64-linux-android-g++" "$CROSS_BIN/aarch64-linux-android-pkg-config"
+
+            # libffi is required by GLib/GObject. Build it for Android ARM64.
+            curl --fail --location --retry 3 https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz -o android-deps-src/libffi.tar.gz
+            tar -xf android-deps-src/libffi.tar.gz -C android-deps-src
+            cd android-deps-src/libffi-3.4.6
+            CC="$CROSS_BIN/aarch64-linux-android-gcc" CXX="$CROSS_BIN/aarch64-linux-android-g++" AR="$TOOLCHAIN/bin/llvm-ar" RANLIB="$TOOLCHAIN/bin/llvm-ranlib" CFLAGS="-O2 -fPIC" ./configure --build="$(./config.guess)" --host=aarch64-linux-android --prefix="$ANDROID_DEPS_PREFIX" --libdir="$ANDROID_DEPS_PREFIX/lib" --disable-shared --enable-static --disable-docs
+            make -j2
+            make install
+            cd "$GITHUB_WORKSPACE"
+
+            # Static zlib, avoiding any accidental linkage to the Linux runner.
+            curl --fail --location --retry 3 https://zlib.net/fossils/zlib-1.3.1.tar.gz -o android-deps-src/zlib.tar.gz
+            tar -xf android-deps-src/zlib.tar.gz -C android-deps-src
+            cd android-deps-src/zlib-1.3.1
+            CC="$CROSS_BIN/aarch64-linux-android-gcc" AR="$TOOLCHAIN/bin/llvm-ar" RANLIB="$TOOLCHAIN/bin/llvm-ranlib" CFLAGS="-O2 -fPIC" ./configure --static --prefix="$ANDROID_DEPS_PREFIX" --libdir="$ANDROID_DEPS_PREFIX/lib"
+            make -j2
+            make install
+            cd "$GITHUB_WORKSPACE"
+
+            # PCRE2 is a required GLib dependency in the selected release.
+            curl --fail --location --retry 3 https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.bz2 -o android-deps-src/pcre2.tar.bz2
+            tar -xf android-deps-src/pcre2.tar.bz2 -C android-deps-src
+            cmake -S android-deps-src/pcre2-10.44 -B android-deps-src/pcre2-build \
+              -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="$ANDROID_API" \
+              -DCMAKE_INSTALL_PREFIX="$ANDROID_DEPS_PREFIX" -DCMAKE_INSTALL_LIBDIR=lib \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+              -DPCRE2_BUILD_PCRE2_8=ON -DPCRE2_BUILD_PCRE2_16=OFF \
+              -DPCRE2_BUILD_PCRE2_32=OFF -DPCRE2_BUILD_TESTS=OFF \
+              -DPCRE2_SUPPORT_JIT=OFF -DPCRE2_BUILD_PCRE2GREP=OFF
+            cmake --build android-deps-src/pcre2-build --parallel 2
+            cmake --install android-deps-src/pcre2-build
+
+            # Use one explicit Meson cross file and only Android-target .pc files.
+            cat > "$RUNNER_TEMP/android-aarch64.meson" <<EOF
+          [binaries]
+          c = '$TOOLCHAIN/bin/aarch64-linux-android$ANDROID_API-clang'
+          cpp = '$TOOLCHAIN/bin/aarch64-linux-android$ANDROID_API-clang++'
+          ar = '$TOOLCHAIN/bin/llvm-ar'
+          strip = '$TOOLCHAIN/bin/llvm-strip'
+          pkg-config = '$CROSS_BIN/aarch64-linux-android-pkg-config'
+
+          [host_machine]
+          system = 'android'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+
+          [properties]
+          needs_exe_wrapper = true
+          EOF
+            echo "ANDROID_MESON_CROSS_FILE=$RUNNER_TEMP/android-aarch64.meson" >> "$GITHUB_ENV"
+
+            # Minimal static GLib/GObject set; disable optional desktop facilities.
+            curl --fail --location --retry 3 https://download.gnome.org/sources/glib/2.82/glib-2.82.4.tar.xz -o android-deps-src/glib.tar.xz
+            tar -xf android-deps-src/glib.tar.xz -C android-deps-src
+            meson setup android-deps-src/glib-build android-deps-src/glib-2.82.4 \
+              --cross-file "$RUNNER_TEMP/android-aarch64.meson" \
+              --prefix="$ANDROID_DEPS_PREFIX" --libdir=lib --buildtype=release \
+              -Ddefault_library=static -Dtests=false -Dinstalled_tests=false \
+              -Dman-pages=disabled -Dintrospection=disabled -Dlibmount=disabled \
+              -Dselinux=disabled -Dlibelf=disabled -Dsystemtap=disabled \
+              -Dgtk_doc=false -Ddocumentation=false -Dnls=disabled -Dglib_debug=disabled
+            ninja -C android-deps-src/glib-build -j2 install
+
+            # Pixman is the other mandatory QEMU host library for this target.
+            curl --fail --location --retry 3 https://cairographics.org/releases/pixman-0.44.2.tar.gz -o android-deps-src/pixman.tar.gz
+            tar -xf android-deps-src/pixman.tar.gz -C android-deps-src
+            meson setup android-deps-src/pixman-build android-deps-src/pixman-0.44.2 \
+              --cross-file "$RUNNER_TEMP/android-aarch64.meson" \
+              --prefix="$ANDROID_DEPS_PREFIX" --libdir=lib --buildtype=release \
+              -Ddefault_library=static
+            ninja -C android-deps-src/pixman-build -j2 install
+          } > android-deps-build.log 2>&1 || {
+            result=$?
+            echo "$result" > android-deps-build-exit-code.txt
+            echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" | tee android-deps-build-result.txt
+            tail -n 100 android-deps-build.log
+            {
+              echo "### Android-target dependency build"
+              echo "Exit code: $result"
+              echo '~~~text'
+              tail -n 100 android-deps-build.log
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          echo "0" > android-deps-build-exit-code.txt
+          echo "ANDROID_DEPS_RESULT=passed" | tee android-deps-build-result.txt
+          {
+            echo "### Android-target dependency build"
+            echo "libffi, zlib, PCRE2, GLib/GObject, and Pixman built for Android ARM64."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Fetch pinned upstream QEMU source
         shell: bash
         run: |
@@ -64,27 +190,20 @@ jobs:
           set -uo pipefail
           TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
           CROSS_BIN="$RUNNER_TEMP/android-cross/bin"
-          mkdir -p "$CROSS_BIN" qemu-android-build
-          # QEMU's configure script needs an explicit cross prefix so Meson
-          # separates build-machine tools from the Android target compiler.
-          cat > "$CROSS_BIN/aarch64-linux-android-gcc" <<EOF
-          #!/usr/bin/env bash
-          exec "$TOOLCHAIN/bin/clang" --target=aarch64-linux-android24 "\$@"
-          EOF
-          cat > "$CROSS_BIN/aarch64-linux-android-g++" <<EOF
-          #!/usr/bin/env bash
-          exec "$TOOLCHAIN/bin/clang++" --target=aarch64-linux-android24 "\$@"
-          EOF
-          for tool in ar ranlib strip nm objcopy; do
-            ln -sf "$TOOLCHAIN/bin/llvm-$tool" "$CROSS_BIN/aarch64-linux-android-$tool"
-          done
-          chmod +x "$CROSS_BIN/aarch64-linux-android-gcc" "$CROSS_BIN/aarch64-linux-android-g++"
+          mkdir -p qemu-android-build
+          if [ "$(cat android-deps-build-exit-code.txt 2>/dev/null || echo 1)" != "0" ]; then
+            echo "CONFIGURE_RESULT=skipped because Android dependency build is blocked" | tee qemu-android-probe-result.txt
+            echo "1" > qemu-android-configure-exit-code.txt
+            exit 0
+          fi
           cd qemu-android-build
           set +e
-          PKG_CONFIG_LIBDIR="$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/24/pkgconfig:$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/pkgconfig:$TOOLCHAIN/sysroot/usr/lib/pkgconfig:$TOOLCHAIN/sysroot/usr/share/pkgconfig" \
+          PKG_CONFIG_LIBDIR="$ANDROID_DEPS_PREFIX/lib/pkgconfig:$ANDROID_DEPS_PREFIX/share/pkgconfig" \
           "$QEMU_SOURCE_DIR/configure" \
             --cross-prefix="$CROSS_BIN/aarch64-linux-android-" \
             --host-cc=cc \
+            --extra-cflags="-I$ANDROID_DEPS_PREFIX/include" \
+            --extra-ldflags="-L$ANDROID_DEPS_PREFIX/lib -ldl -lm" \
             --cpu=aarch64 \
             --target-list=aarch64-softmmu \
             --without-default-features \
@@ -153,6 +272,9 @@ jobs:
             android-elf.txt
             android-elf-header.txt
             qemu-source.txt
+            android-deps-build.log
+            android-deps-build-exit-code.txt
+            android-deps-build-result.txt
             qemu-android-configure.log
             qemu-android-configure-exit-code.txt
             qemu-android-probe-result.txt
