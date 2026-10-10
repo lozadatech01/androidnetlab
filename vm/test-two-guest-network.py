@@ -38,14 +38,13 @@ def run_command(child, command, marker, timeout=25):
 
 def configure_ip(child, address):
     # Prefer iproute2/BusyBox ip; fall back to BusyBox ifconfig.
-    out = run_command(
-        child,
+    command = (
         f"(ip link set eth0 up && ip addr flush dev eth0 && ip addr add {address}/24 dev eth0) "
-        f"|| (ifconfig eth0 {address} netmask 255.255.255.0 up)",
-        "__NET_CONFIG_DONE__",
-        timeout=15,
+        f">/dev/null 2>&1 && echo NETCONFIG_OK || "
+        f"(ifconfig eth0 {address} netmask 255.255.255.0 up >/dev/null 2>&1 && echo NETCONFIG_OK || echo NETCONFIG_FAILED)"
     )
-    if re.search(r"(not found|can't|unknown|error|failed)", out, re.I):
+    out = run_command(child, command, "__NET_CONFIG_DONE__", timeout=15)
+    if "NETCONFIG_OK" not in out or "NETCONFIG_FAILED" in out:
         raise RuntimeError(f"Could not configure eth0 at {address}: {out[-1200:]}")
 
 
