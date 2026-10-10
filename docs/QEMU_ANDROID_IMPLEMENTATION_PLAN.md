@@ -3,6 +3,12 @@
 **Status:** Engineering direction and staged plan; Android runtime is not yet implemented.
 **Primary goal:** Run multiple independent, lightweight Linux VMs on ordinary ARM64 Android devices, then connect them through isolated virtual Ethernet networks.
 
+## Latest CI compatibility finding (QEMU 9.2.0 / Android NDK r27c)
+
+The repeatable probe has now successfully built the Android-target dependency set (libffi, zlib, PCRE2, GLib/GObject, and Pixman) and passed QEMU's configure step when those target libraries are used. The first QEMU compile then exposed `shm_open`/`shm_unlink` in the optional `backends/hostmem-shm.c` backend. Android Bionic intentionally does not provide these functions, so the current probe removes that one optional source file from the QEMU build graph. The initial AndroidNetLab guest profile does not need this shared-memory backend; it uses regular guest RAM and a file-backed disk. The patched compile is being validated separately.
+
+A green probe workflow is not by itself a runtime pass. The artifact/result files must confirm whether the binary was produced, and native execution, TCG guest-code execution, guest boot, and shutdown/restart still require device validation.
+
 ## Core decision
 
 Build AndroidNetLab around QEMU's **system emulation** rather than writing a VM engine from scratch. Reuse QEMU's CPU translation, virtual board/device models, block layer, serial devices, and network backends wherever they work on Android. Write AndroidNetLab-specific code for VM lifecycle, Android integration, configuration, resource admission, persistent per-VM storage, and virtual network topology.
