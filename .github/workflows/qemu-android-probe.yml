@@ -49,13 +49,16 @@ jobs:
       - name: Build minimal Android-target libraries
         shell: bash
         env:
-          ANDROID_API: "24"
+          ANDROID_API: "28"
         run: |
           set -euo pipefail
           export TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
           export ANDROID_DEPS_PREFIX="$RUNNER_TEMP/android-prefix"
           export CROSS_BIN="$RUNNER_TEMP/android-cross/bin"
           mkdir -p "$ANDROID_DEPS_PREFIX" "$CROSS_BIN" android-deps-src
+          # Fail fast and still keep diagnostics for the always-run artifact step.
+          exec > >(tee android-deps-build.log) 2>&1
+          trap 'result=$?; echo "$result" > android-deps-build-exit-code.txt; if [ "$result" -eq 0 ]; then echo "ANDROID_DEPS_RESULT=passed" > android-deps-build-result.txt; else echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" > android-deps-build-result.txt; { echo "### Android-target dependency build"; echo "Exit code: $result"; echo '~~~text'; tail -n 100 android-deps-build.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
           echo "ANDROID_DEPS_PREFIX=$ANDROID_DEPS_PREFIX" >> "$GITHUB_ENV"
           echo "CROSS_BIN=$CROSS_BIN" >> "$GITHUB_ENV"
           {
@@ -140,7 +143,8 @@ jobs:
               -Ddefault_library=static -Dtests=false -Dinstalled_tests=false \
               -Dman-pages=disabled -Dintrospection=disabled -Dlibmount=disabled \
               -Dselinux=disabled -Dlibelf=disabled -Dsystemtap=disabled \
-              -Dgtk_doc=false -Ddocumentation=false -Dnls=disabled -Dglib_debug=disabled
+              -Dgtk_doc=false -Ddocumentation=false -Dnls=disabled -Dglib_debug=disabled \
+              -Diconv=libc
             ninja -C android-deps-src/glib-build -j2 install
 
             # Pixman is the other mandatory QEMU host library for this target.
@@ -151,26 +155,7 @@ jobs:
               --prefix="$ANDROID_DEPS_PREFIX" --libdir=lib --buildtype=release \
               -Ddefault_library=static
             ninja -C android-deps-src/pixman-build -j2 install
-          } > android-deps-build.log 2>&1 || {
-            result=$?
-            echo "$result" > android-deps-build-exit-code.txt
-            echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" | tee android-deps-build-result.txt
-            tail -n 100 android-deps-build.log
-            {
-              echo "### Android-target dependency build"
-              echo "Exit code: $result"
-              echo '~~~text'
-              tail -n 100 android-deps-build.log
-              echo '~~~'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          }
-          echo "0" > android-deps-build-exit-code.txt
-          echo "ANDROID_DEPS_RESULT=passed" | tee android-deps-build-result.txt
-          {
-            echo "### Android-target dependency build"
-            echo "libffi, zlib, PCRE2, GLib/GObject, and Pixman built for Android ARM64."
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Android-target dependency build completed."
 
       - name: Fetch pinned upstream QEMU source
         shell: bash
