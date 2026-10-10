@@ -1,30 +1,25 @@
 # AndroidNetLab
 
-An Android-first prototype for a lightweight Linux networking lab, built around the goal of running multiple independent Linux VMs using QEMU.
+An Android-first lightweight Linux networking lab, using QEMU system emulation as the intended VM engine.
 
-## Current milestone
+## Project layout
 
-Prototype 0.1 focuses on a native Android dashboard, measurable host/app diagnostics, and a reproducible CI build. Linux guest images are built separately from the Android APK. Real guest execution and two-guest virtual networking will only be marked implemented after they are integrated and tested on-device.
+- `new/` — clean next-generation Android app and QEMU-first runtime integration work.
+- `old/prototype-0.1/` — preserved original Android app and original Gradle project files.
+- `vm/` — existing minimal AArch64 guest build and Linux-host functional test scripts.
+- `docs/` — architecture, Android runtime research, and virtual network design.
+- `.github/workflows/` — CI for the new Android app and guest functional tests.
 
-## QEMU-first runtime plan
+## Current status
 
-- [`docs/QEMU_ANDROID_IMPLEMENTATION_PLAN.md`](docs/QEMU_ANDROID_IMPLEMENTATION_PLAN.md) — the implementation direction: reuse QEMU's system-emulation engine, build an Android-compatible ARM64 runtime, integrate it with the app, optimize for constrained phones, and validate in staged milestones.
-- [`docs/ANDROID_RUNTIME_RESEARCH.md`](docs/ANDROID_RUNTIME_RESEARCH.md) — Android runtime feasibility, Linux guest design, resource optimization, and validation gates.
-- [`docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md`](docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md) — how QEMU network sockets, plugs, links, and shared virtual LANs can connect independent VMs.
-
-These are engineering plans and test guides; they do not claim Android guest execution is already integrated. A successful Linux-host CI test is not proof that the Android runtime works.
-
-## Repository layout
-
-- `app/` — Android application.
-- `vm/` — Linux guest build configuration and scripts.
-- `.github/workflows/` — GitHub Actions builds and artifact publishing.
-- `docs/` — architecture, testing, and compatibility notes.
+The new app is a clean foundation, not yet a working VM runtime. Its UI explicitly reports that QEMU is not integrated. The first runtime milestone is to build an Android-compatible QEMU for ARM64 and boot one real Linux guest on Android. Linux-host QEMU tests validate guest/test logic but do not prove Android compatibility.
 
 ## Build
 
-Pushes and pull requests run the Android build workflow. Successful builds publish an APK as a workflow artifact. Guest image builds are separate because they require a Linux cross-build environment and may take significantly longer.
+The Android CI workflow builds the new project from `new/` and publishes its debug APK as an artifact. The old prototype remains in the repository for reference and is not the main app build.
 
-## Important
+## Engineering docs
 
-A successful CI build does not prove that virtualization works on a particular phone. Runtime compatibility, memory use, and virtual networking must be validated on the target device.
+- [QEMU Android implementation plan](docs/QEMU_ANDROID_IMPLEMENTATION_PLAN.md)
+- [Android runtime research](docs/ANDROID_RUNTIME_RESEARCH.md)
+- [VM sockets and virtual networks](docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md)
