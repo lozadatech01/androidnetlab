@@ -1,11 +1,23 @@
 package dev.lozadatech.androidnetlab.next.runtime
 
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class VmConfigTest {
+    private fun <T> runSuspend(block: suspend () -> T): T {
+        var outcome: Result<T>? = null
+        block.startCoroutine(object : Continuation<T> {
+            override val context = EmptyCoroutineContext
+            override fun resumeWith(result: Result<T>) { outcome = result }
+        })
+        return checkNotNull(outcome).getOrThrow()
+    }
+
     @Test
     fun defaultsDescribeSmallAarch64VirtGuest() {
         val config = VmConfig(name = "Alpine Linux")
@@ -50,8 +62,8 @@ class VmConfigTest {
         val config = VmConfig(name = "Test guest")
 
         assertEquals(VmState.UNAVAILABLE, runtime.availability().state)
-        assertEquals(VmState.UNAVAILABLE, kotlinx.coroutines.runBlocking { runtime.start(config) }.state)
-        assertEquals(VmState.UNAVAILABLE, kotlinx.coroutines.runBlocking { runtime.stop(config.name) }.state)
+        assertEquals(VmState.UNAVAILABLE, runSuspend { runtime.start(config) }.state)
+        assertEquals(VmState.UNAVAILABLE, runSuspend { runtime.stop(config.name) }.state)
         assertEquals(VmState.UNAVAILABLE, runtime.status(config.name).state)
     }
 
