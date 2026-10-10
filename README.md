@@ -20,6 +20,7 @@ The Android CI workflow builds the new project from `new/` and publishes its deb
 
 ## Engineering docs
 
+- [QEMU research and build order](docs/QEMU_RESEARCH_AND_BUILD_ORDER.md) — what QEMU provides, what must be adapted for Android, and the recommended implementation sequence.
 - [QEMU Android implementation plan](docs/QEMU_ANDROID_IMPLEMENTATION_PLAN.md)
 - [Android runtime research](docs/ANDROID_RUNTIME_RESEARCH.md)
 - [VM sockets and virtual networks](docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md)
