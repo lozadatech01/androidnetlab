@@ -305,7 +305,13 @@ class MainActivity : Activity() {
             .putString("custom_profiles", customProfiles.joinToString("\\n")).apply()
     }
 
-    private fun profileKey(name: String, field: String) = "vm_profile.${name.hashCode()}.$field"
+    private fun profileKey(name: String, field: String): String {
+        val encodedName = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(name.toByteArray(Charsets.UTF_8))
+        return "vm_profile.v2.$encodedName.$field"
+    }
+
+    private fun legacyProfileKey(name: String, field: String) = "vm_profile.${name.hashCode()}.$field"
 
     private fun loadProfileSettings(name: String) {
         val defaults = when (name) {
@@ -316,11 +322,12 @@ class MainActivity : Activity() {
             else -> intArrayOf(ramMb, cpuCount, diskGb)
         }
         // Preserve the old single-profile settings during migration for the previously selected profile.
-        ramMb = prefs.getInt(profileKey(name, "ram_mb"), if (name == profile) prefs.getInt("ram_mb", defaults[0]) else defaults[0]).coerceIn(128, 2048)
-        cpuCount = prefs.getInt(profileKey(name, "cpu_count"), if (name == profile) prefs.getInt("cpu_count", defaults[1]) else defaults[1]).coerceIn(1, 4)
-        diskGb = prefs.getInt(profileKey(name, "disk_gb"), if (name == profile) prefs.getInt("disk_gb", defaults[2]) else defaults[2]).coerceIn(2, 32)
+        ramMb = prefs.getInt(profileKey(name, "ram_mb"), prefs.getInt(legacyProfileKey(name, "ram_mb"), if (name == profile) prefs.getInt("ram_mb", defaults[0]) else defaults[0])).coerceIn(128, 2048)
+        cpuCount = prefs.getInt(profileKey(name, "cpu_count"), prefs.getInt(legacyProfileKey(name, "cpu_count"), if (name == profile) prefs.getInt("cpu_count", defaults[1]) else defaults[1])).coerceIn(1, 4)
+        diskGb = prefs.getInt(profileKey(name, "disk_gb"), prefs.getInt(legacyProfileKey(name, "disk_gb"), if (name == profile) prefs.getInt("disk_gb", defaults[2]) else defaults[2])).coerceIn(2, 32)
         val legacyNetwork = if (name == profile) prefs.getString("network_mode", "User NAT") else null
-        networkMode = prefs.getString(profileKey(name, "network_mode"), legacyNetwork ?: if (name == "Buildroot Minimal") "Isolated" else "User NAT") ?: "User NAT"
+        networkMode = prefs.getString(profileKey(name, "network_mode"), prefs.getString(legacyProfileKey(name, "network_mode"), legacyNetwork ?: if (name == "Buildroot Minimal") "Isolated" else "User NAT")) ?: "User NAT"
+        if (networkMode !in listOf("User NAT", "Isolated", "Bridge*")) networkMode = "User NAT"
     }
 
     private fun saveProfileSettings(name: String) {
