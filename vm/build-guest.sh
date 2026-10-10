@@ -13,147 +13,34 @@ fi
 # Start from Buildroot's supported AArch64 QEMU board configuration.
 make -C "$WORK" qemu_aarch64_virt_defconfig
 
-# Buildroot's QEMU board config can enable a host-side QEMU build for upstream
-# CI testing. AndroidNetLab runs the guest with the runner's installed QEMU,
-# so building another QEMU binary is unnecessary and only increases build time.
+# We use the CI runner's QEMU to test the guest; don't build a second QEMU.
 sed -i \
   -e 's/^BR2_PACKAGE_HOST_QEMU=y/# BR2_PACKAGE_HOST_QEMU is not set/' \
   -e 's/^BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE=y/# BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE is not set/' \
   "$WORK/.config"
 make -C "$WORK" olddefconfig
 
-# Buildroot defaults to size-conscious optimization (-Os). Keep the upstream
-# kernel/device configuration intact until boot tests prove any change safe.
-grep -q '^BR2_aarch64=y
+# Guard against silently building the wrong architecture or missing output type.
+grep -q '^BR2_aarch64=y$' "$WORK/.config"
+grep -q '^BR2_LINUX_KERNEL=y$' "$WORK/.config"
+grep -q '^BR2_TARGET_ROOTFS_EXT2=y$' "$WORK/.config"
+if grep -q '^BR2_PACKAGE_HOST_QEMU=y$' "$WORK/.config"; then
+  echo "ERROR: unnecessary host QEMU build is still enabled" >&2
+  exit 1
+fi
 
 IMAGE_DIR="$WORK/output/images"
 TARGET_DIR="$WORK/output/target"
 DIST_DIR="$ROOT/vm/dist"
 mkdir -p "$DIST_DIR"
 
-for artifact in Image rootfs.ext2; do
-  test -s "$IMAGE_DIR/$artifact" || {
-    echo "ERROR: expected guest artifact missing or empty: $IMAGE_DIR/$artifact" >&2
-    exit 1
-  }
-done
+# Capture a build-time process snapshot for the CI artifact. This is a snapshot
+# after compilation, while package/service inventory below describes the guest.
+ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | head -n 30 \
+  > "$DIST_DIR/build-process-snapshot.txt" || true
 
-cp "$IMAGE_DIR/Image" "$DIST_DIR/Image"
-cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
-
-# Write a reproducible build report for comparing future size changes.
-{
-  echo "Buildroot version: $BUILDROOT_VERSION"
-  echo "Architecture: AArch64 (QEMU virt)"
-  echo "Desktop GUI: not intentionally configured"
-  echo "Audio services: not intentionally configured"
-  echo
-  echo "Artifact sizes:"
-  du -h "$DIST_DIR/Image" "$DIST_DIR/rootfs.ext2"
-  echo
-  echo "Target filesystem usage:"
-  du -sh "$TARGET_DIR"
-  echo
-  echo "Target shared-library files (.so*):"
-  find "$TARGET_DIR" -type f -name 'lib*.so*' | wc -l
-  echo
-  echo "Potential GUI/audio package footprints (presence only; not a failure):"
-  for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/lib/libasound.so usr/lib/libpulse.so; do
-    if [[ -e "$TARGET_DIR/$path" ]]; then echo "PRESENT: $path"; fi
-  done
-} | tee "$DIST_DIR/build-report.txt"
-
-printf 'Guest build complete: %s\n' "$DIST_DIR"
- "$WORK/.config"
-grep -q '^BR2_LINUX_KERNEL=y
-
-IMAGE_DIR="$WORK/output/images"
-TARGET_DIR="$WORK/output/target"
-DIST_DIR="$ROOT/vm/dist"
-mkdir -p "$DIST_DIR"
-
-for artifact in Image rootfs.ext2; do
-  test -s "$IMAGE_DIR/$artifact" || {
-    echo "ERROR: expected guest artifact missing or empty: $IMAGE_DIR/$artifact" >&2
-    exit 1
-  }
-done
-
-cp "$IMAGE_DIR/Image" "$DIST_DIR/Image"
-cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
-
-# Write a reproducible build report for comparing future size changes.
-{
-  echo "Buildroot version: $BUILDROOT_VERSION"
-  echo "Architecture: AArch64 (QEMU virt)"
-  echo "Desktop GUI: not intentionally configured"
-  echo "Audio services: not intentionally configured"
-  echo
-  echo "Artifact sizes:"
-  du -h "$DIST_DIR/Image" "$DIST_DIR/rootfs.ext2"
-  echo
-  echo "Target filesystem usage:"
-  du -sh "$TARGET_DIR"
-  echo
-  echo "Target shared-library files (.so*):"
-  find "$TARGET_DIR" -type f -name 'lib*.so*' | wc -l
-  echo
-  echo "Potential GUI/audio package footprints (presence only; not a failure):"
-  for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/lib/libasound.so usr/lib/libpulse.so; do
-    if [[ -e "$TARGET_DIR/$path" ]]; then echo "PRESENT: $path"; fi
-  done
-} | tee "$DIST_DIR/build-report.txt"
-
-printf 'Guest build complete: %s\n' "$DIST_DIR"
- "$WORK/.config"
-grep -q '^BR2_TARGET_ROOTFS_EXT2=y
-
-IMAGE_DIR="$WORK/output/images"
-TARGET_DIR="$WORK/output/target"
-DIST_DIR="$ROOT/vm/dist"
-mkdir -p "$DIST_DIR"
-
-for artifact in Image rootfs.ext2; do
-  test -s "$IMAGE_DIR/$artifact" || {
-    echo "ERROR: expected guest artifact missing or empty: $IMAGE_DIR/$artifact" >&2
-    exit 1
-  }
-done
-
-cp "$IMAGE_DIR/Image" "$DIST_DIR/Image"
-cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
-
-# Write a reproducible build report for comparing future size changes.
-{
-  echo "Buildroot version: $BUILDROOT_VERSION"
-  echo "Architecture: AArch64 (QEMU virt)"
-  echo "Desktop GUI: not intentionally configured"
-  echo "Audio services: not intentionally configured"
-  echo
-  echo "Artifact sizes:"
-  du -h "$DIST_DIR/Image" "$DIST_DIR/rootfs.ext2"
-  echo
-  echo "Target filesystem usage:"
-  du -sh "$TARGET_DIR"
-  echo
-  echo "Target shared-library files (.so*):"
-  find "$TARGET_DIR" -type f -name 'lib*.so*' | wc -l
-  echo
-  echo "Potential GUI/audio package footprints (presence only; not a failure):"
-  for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/lib/libasound.so usr/lib/libpulse.so; do
-    if [[ -e "$TARGET_DIR/$path" ]]; then echo "PRESENT: $path"; fi
-  done
-} | tee "$DIST_DIR/build-report.txt"
-
-printf 'Guest build complete: %s\n' "$DIST_DIR"
- "$WORK/.config"
 make -C "$WORK" -j"$(nproc)"
 
-IMAGE_DIR="$WORK/output/images"
-TARGET_DIR="$WORK/output/target"
-DIST_DIR="$ROOT/vm/dist"
-mkdir -p "$DIST_DIR"
-
 for artifact in Image rootfs.ext2; do
   test -s "$IMAGE_DIR/$artifact" || {
     echo "ERROR: expected guest artifact missing or empty: $IMAGE_DIR/$artifact" >&2
@@ -164,12 +51,13 @@ done
 cp "$IMAGE_DIR/Image" "$DIST_DIR/Image"
 cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
 
-# Write a reproducible build report for comparing future size changes.
+# Inventory init scripts and likely service binaries so we can identify
+# unnecessary guest-side background services before removing packages.
 {
   echo "Buildroot version: $BUILDROOT_VERSION"
   echo "Architecture: AArch64 (QEMU virt)"
-  echo "Desktop GUI: not intentionally configured"
-  echo "Audio services: not intentionally configured"
+  echo "Host QEMU package: disabled (CI runner supplies QEMU)"
+  echo "Desktop GUI/audio: not intentionally configured; inventory follows"
   echo
   echo "Artifact sizes:"
   du -h "$DIST_DIR/Image" "$DIST_DIR/rootfs.ext2"
@@ -177,12 +65,24 @@ cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
   echo "Target filesystem usage:"
   du -sh "$TARGET_DIR"
   echo
-  echo "Target shared-library files (.so*):"
+  echo "Shared-library files (.so*):"
   find "$TARGET_DIR" -type f -name 'lib*.so*' | wc -l
   echo
-  echo "Potential GUI/audio package footprints (presence only; not a failure):"
-  for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/lib/libasound.so usr/lib/libpulse.so; do
+  echo "Guest init scripts (/etc/init.d):"
+  if [[ -d "$TARGET_DIR/etc/init.d" ]]; then
+    find "$TARGET_DIR/etc/init.d" -maxdepth 1 -type f -printf '%f\n' | sort
+  else
+    echo "(none)"
+  fi
+  echo
+  echo "Potential GUI/audio binaries and libraries (presence only):"
+  for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/sbin/sshd usr/sbin/cron usr/bin/dbus-daemon usr/lib/libasound.so usr/lib/libpulse.so; do
     if [[ -e "$TARGET_DIR/$path" ]]; then echo "PRESENT: $path"; fi
+  done
+  echo
+  echo "Top-level service-related directories:"
+  for path in etc/init.d etc/rc.d etc/systemd/system; do
+    [[ ! -e "$TARGET_DIR/$path" ]] || find "$TARGET_DIR/$path" -maxdepth 1 -mindepth 1 -printf '%P\n' | sort
   done
 } | tee "$DIST_DIR/build-report.txt"
 
