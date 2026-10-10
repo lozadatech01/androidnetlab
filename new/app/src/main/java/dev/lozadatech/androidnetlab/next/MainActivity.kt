@@ -502,6 +502,10 @@ class MainActivity : Activity() {
         try {
             if (disk.exists()) { toast("Disk already exists; existing data was preserved."); drawPage(); return }
             if (tempDisk.exists()) { toast("An incomplete disk creation file exists; inspect app storage before retrying."); return }
+            if (java.io.File(vmDir, "profile.txt.tmp").exists() || java.io.File(vmDir, "profile.txt.bak").exists()) {
+                toast("Metadata recovery files exist; inspect app storage before creating a disk.")
+                return
+            }
             if (requestedBytes > filesDir.usableSpace - 64L * 1024L * 1024L) { toast("Not enough app storage. Free space or reduce disk size."); return }
             if (!vmDir.exists() && !vmDir.mkdirs()) throw java.io.IOException("Could not create VM storage directory")
             if (!tempDisk.createNewFile()) throw java.io.IOException("Could not reserve temporary disk file")
