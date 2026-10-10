@@ -309,7 +309,7 @@ class MainActivity : Activity() {
         if (diskPathCollision) body.addView(label("Disk actions are disabled to prevent profiles from sharing or overwriting a disk. Rename one profile in a future version or manually back up and resolve the old storage path.", 9, 0xFFFCA5A5.toInt()).apply { setPadding(dp(2), dp(2), dp(2), dp(4)) })
         body.addView(chip(if (diskPathCollision) "Disk actions blocked by path conflict" else if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
             if (diskPathCollision) toast("Disk action blocked: resolve the legacy storage path conflict first.")
-            else if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else createVirtualDisk()
+            else if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else confirmCreateVirtualDisk()
         }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         if (diskFile.isFile && !diskPathCollision) {
             body.addView(chip("Sync saved profile metadata") { syncProfileMetadata() },
@@ -561,6 +561,16 @@ class MainActivity : Activity() {
             toast("Metadata sync failed: ${e.message ?: "storage error"}")
         }
         drawPage()
+    }
+
+    private fun confirmCreateVirtualDisk() {
+        val requestedBytes = diskGb.toLong() * 1024L * 1024L * 1024L
+        AlertDialog.Builder(this)
+            .setTitle("Create empty virtual disk?")
+            .setMessage("Create a $diskGb GiB raw disk file for \"$profile\"? This reserves a logical disk size of ${formatBytes(requestedBytes)} in app-private storage. It does not install an operating system or make the VM bootable. Existing disks are never overwritten.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Create disk") { _, _ -> createVirtualDisk() }
+            .show()
     }
 
     private fun createVirtualDisk() {
