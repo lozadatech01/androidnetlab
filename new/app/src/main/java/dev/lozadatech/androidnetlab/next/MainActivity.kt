@@ -266,6 +266,16 @@ class MainActivity : Activity() {
             else -> "No virtual disk created for this profile"
         }
         body.addView(label(diskStatus, 10, if (diskFile.isFile && !diskPathCollision) 0xFF86EFAC.toInt() else if (diskPathCollision) 0xFFFCA5A5.toInt() else muted).apply { setPadding(dp(2), dp(6), dp(2), dp(3)) })
+        if (diskFile.isFile && !diskPathCollision) {
+            val metadataFile = java.io.File(diskFile.parentFile, "profile.txt")
+            val metadataStatus = when {
+                !metadataFile.isFile -> "Profile metadata missing • sync or recreate metadata"
+                runCatching { metadataFile.readText() == profileMetadataText() }.getOrDefault(false) -> "Profile metadata is synchronized"
+                else -> "Profile metadata is stale • sync to apply current settings"
+            }
+            val metadataColor = if (metadataStatus == "Profile metadata is synchronized") 0xFF86EFAC.toInt() else 0xFFFCD34D.toInt()
+            body.addView(label(metadataStatus, 9, metadataColor).apply { setPadding(dp(2), dp(1), dp(2), dp(3)) })
+        }
         if (diskPathCollision) body.addView(label("Disk actions are disabled to prevent profiles from sharing or overwriting a disk. Rename one profile in a future version or manually back up and resolve the old storage path.", 9, 0xFFFCA5A5.toInt()).apply { setPadding(dp(2), dp(2), dp(2), dp(4)) })
         body.addView(chip(if (diskPathCollision) "Disk actions blocked by path conflict" else if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
             if (diskPathCollision) toast("Disk action blocked: resolve the legacy storage path conflict first.")
@@ -432,7 +442,7 @@ class MainActivity : Activity() {
     }
 
     private fun profileMetadataText() =
-        "name=$profile\\narchitecture=aarch64\\nmachine=virt\\nmemory_mib=$ramMb\\nvcpus=$cpuCount\\ndisk_gib=$diskGb\\nnetwork=$networkMode\\nformat=raw\\n"
+        "name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n"
 
     private fun syncProfileMetadata() {
         if (hasLegacyDiskPathCollision(profile)) {
