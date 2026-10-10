@@ -37,12 +37,10 @@ def run_command(child, command, marker, timeout=25):
 
 
 def configure_ip(child, address):
-    # Prefer iproute2/BusyBox ip; fall back to BusyBox ifconfig.
-    command = (
-        f"(ip link set eth0 up && ip addr flush dev eth0 && ip addr add {address}/24 dev eth0) "
-        f">/dev/null 2>&1 && echo NETCONFIG_OK || "
-        f"(ifconfig eth0 {address} netmask 255.255.255.0 up >/dev/null 2>&1 && echo NETCONFIG_OK || echo NETCONFIG_FAILED)"
-    )
+    # Use BusyBox ifconfig, which is included in the minimal Buildroot guest.
+    # Keep the serial-console command short: long commands can be wrapped by
+    # the console line discipline and arrive at the guest shell split apart.
+    command = f"ifconfig eth0 {address} netmask 255.255.255.0 up && echo NETCONFIG_OK || echo NETCONFIG_FAILED"
     out = run_command(child, command, "__NET_CONFIG_DONE__", timeout=15)
     if "NETCONFIG_OK" not in out or "NETCONFIG_FAILED" in out:
         raise RuntimeError(f"Could not configure eth0 at {address}: {out[-1200:]}")
