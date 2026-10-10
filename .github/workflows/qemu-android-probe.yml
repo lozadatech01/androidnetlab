@@ -281,20 +281,31 @@ jobs:
           set -e
           printf '%s\n' "$result" > qemu-android-build-exit-code.txt
           if [ "$result" -eq 0 ] && [ -s qemu-android-build/qemu-system-aarch64 ]; then
-            {
-              echo "Candidate Android ARM64 QEMU binary:"
-              file qemu-android-build/qemu-system-aarch64
-              sha256sum qemu-android-build/qemu-system-aarch64
-              readelf -h qemu-android-build/qemu-system-aarch64
-              echo
-              echo "Dynamic dependencies (if any):"
-              readelf -d qemu-android-build/qemu-system-aarch64 || true
-            } | tee qemu-android-binary.txt
+            TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+            # Preserve a debug build only inside the ephemeral runner. Publish a
+            # smaller symbol-stripped candidate as the device-test artifact.
+            cp qemu-android-build/qemu-system-aarch64 qemu-system-aarch64-android-arm64.unstripped
+            "$TOOLCHAIN/bin/llvm-strip" --strip-debug qemu-android-build/qemu-system-aarch64
             cp qemu-android-build/qemu-system-aarch64 qemu-system-aarch64-android-arm64
+            {
+              echo "Stripped Android ARM64 QEMU candidate:"
+              file qemu-system-aarch64-android-arm64
+              sha256sum qemu-system-aarch64-android-arm64
+              stat -c 'File size: %s bytes' qemu-system-aarch64-android-arm64
+              readelf -h qemu-system-aarch64-android-arm64
+              echo
+              echo "Dynamic dependencies:"
+              readelf -d qemu-system-aarch64-android-arm64 || true
+              echo
+              echo "Unstripped build size (debug symbols retained only for diagnostics):"
+              stat -c '%n %s bytes' qemu-system-aarch64-android-arm64.unstripped
+            } | tee qemu-android-binary.txt
+            grep -q 'Machine:.*AArch64' <(readelf -h qemu-system-aarch64-android-arm64)
+            grep -q '/system/bin/linker64' <(file qemu-system-aarch64-android-arm64)
             echo "BUILD_RESULT=passed; Android execution and guest boot still unverified" | tee qemu-android-build-result.txt
             {
               echo "### Candidate QEMU build"
-              echo "QEMU produced an Android-target ELF. This is a cross-build result only, not a device execution or guest-boot pass."
+              echo "QEMU produced an Android-target AArch64 ELF and stripped debug sections for a smaller test artifact. This is a cross-build result only, not a device execution or guest-boot pass."
               echo '~~~text'
               cat qemu-android-binary.txt
               echo '~~~'
