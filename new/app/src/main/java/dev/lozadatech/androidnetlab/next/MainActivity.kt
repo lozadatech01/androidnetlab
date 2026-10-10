@@ -16,6 +16,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.lozadatech.androidnetlab.next.runtime.GuestArtifactStore
 import dev.lozadatech.androidnetlab.next.runtime.GuestBootReadiness
+import dev.lozadatech.androidnetlab.next.runtime.GuestProfileSupport
 import dev.lozadatech.androidnetlab.next.runtime.QemuBinaryProbe
 import dev.lozadatech.androidnetlab.next.runtime.QemuCommandBuilder
 import dev.lozadatech.androidnetlab.next.runtime.VmState
@@ -265,7 +266,8 @@ class MainActivity : Activity() {
     private fun drawVmManager() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
         body.addView(label("VM MANAGER", 11, muted, true))
-        body.addView(label("Guest profiles, local storage, and runtime diagnostics", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
+        body.addView(label("Guest templates, local storage, and runtime diagnostics", 10, muted).apply { setPadding(0, dp(4), 0, dp(3)) })
+        body.addView(label("BOOT SUPPORT: Buildroot Minimal only. Alpine, Debian, and Custom ARM64 are saved configuration templates; matching guest images are not installed.", 9, 0xFFFCD34D.toInt()).apply { setPadding(0, dp(2), 0, dp(6)) })
         body.addView(section("VM PROFILES"))
         (builtInProfiles + customProfiles).forEach { name ->
             body.addView(LinearLayout(this).apply {
@@ -910,6 +912,21 @@ class MainActivity : Activity() {
     }
 
     private fun startSelectedVm() {
+        if (!GuestProfileSupport.canBoot(profile)) {
+            AlertDialog.Builder(this)
+                .setTitle("Guest OS is not installed")
+                .setMessage(GuestProfileSupport.unavailableReason(profile))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Select Buildroot Minimal") { _, _ ->
+                    saveProfileSettings(profile)
+                    profile = GuestProfileSupport.INITIAL_SUPPORTED_PROFILE
+                    loadProfileSettings(profile)
+                    saveState()
+                    drawPage()
+                }
+                .show()
+            return
+        }
         if (isGuestActive()) {
             showGuestConsoleDialog()
             return
