@@ -1,0 +1,24 @@
+name: Linux guest image
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'vm/**'
+      - '.github/workflows/linux-guest.yml'
+permissions:
+  contents: read
+jobs:
+  build-guest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential bc cpio file git rsync unzip wget python3
+      - name: Build minimal AArch64 guest
+        run: bash vm/build-guest.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: androidnetlab-linux-guest-aarch64
+          path: vm/dist/*
+          if-no-files-found: error
+          retention-days: 14
