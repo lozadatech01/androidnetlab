@@ -59,3 +59,16 @@ class UnavailableQemuRuntime : QemuRuntime {
         "No runtime status is available for '$vmName'."
     )
 }
+
+
+/** Pure validation shared by the profile UI and unit tests. Returns null when valid. */
+fun validateVmProfileName(rawName: String, existingNames: Collection<String>): String? {
+    val name = rawName.trim()
+    return when {
+        name.isBlank() -> "Enter a profile name."
+        name.length > 40 -> "Keep the name under 40 characters."
+        name.any { it.isISOControl() } -> "Profile names cannot contain control characters or line breaks."
+        existingNames.any { it.equals(name, ignoreCase = true) } -> "That profile already exists."
+        else -> null
+    }
+}
