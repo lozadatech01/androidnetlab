@@ -260,6 +260,12 @@ class MainActivity : Activity() {
         body.addView(chip(if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
             if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else createVirtualDisk()
         }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        if (diskFile.isFile) {
+            body.addView(chip("Sync saved profile metadata") { syncProfileMetadata() },
+                LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
+            body.addView(label("Updates profile.txt only; virtual disk contents are not changed.", 9, muted)
+                .apply { setPadding(dp(2), dp(3), dp(2), dp(4)) })
+        }
         body.addView(chip("▶ Start selected VM") { toast("Disk/profile are local, but QEMU is not installed yet. No guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
@@ -360,6 +366,25 @@ class MainActivity : Activity() {
         return String.format(java.util.Locale.ROOT, "%.2f GiB logical", gib)
     }
 
+    private fun profileMetadataText() =
+        "name=$profile\\narchitecture=aarch64\\nmachine=virt\\nmemory_mib=$ramMb\\nvcpus=$cpuCount\\ndisk_gib=$diskGb\\nnetwork=$networkMode\\nformat=raw\\n"
+
+    private fun syncProfileMetadata() {
+        val disk = virtualDiskFile(profile)
+        if (!disk.isFile) { toast("No virtual disk exists for this profile."); drawPage(); return }
+        val metadata = java.io.File(disk.parentFile, "profile.txt")
+        val tempMetadata = java.io.File(disk.parentFile, "profile.txt.tmp")
+        try {
+            tempMetadata.writeText(profileMetadataText())
+            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Could not finalize metadata file")
+            toast("Profile metadata synchronized.")
+        } catch (e: Exception) {
+            if (tempMetadata.exists()) tempMetadata.delete()
+            toast("Metadata sync failed: ${e.message ?: "storage error"}")
+        }
+        drawPage()
+    }
+
     private fun createVirtualDisk() {
         val disk = virtualDiskFile(profile)
         val vmDir = disk.parentFile ?: throw java.io.IOException("Invalid VM storage path")
@@ -374,9 +399,9 @@ class MainActivity : Activity() {
             java.io.RandomAccessFile(tempDisk, "rw").use { it.setLength(requestedBytes) }
             val metadata = java.io.File(vmDir, "profile.txt")
             val tempMetadata = java.io.File(vmDir, "profile.txt.tmp")
-            tempMetadata.writeText("name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n")
-            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Could not finalize VM metadata")
+            tempMetadata.writeText(profileMetadataText())
             if (disk.exists() || !tempDisk.renameTo(disk)) throw java.io.IOException("Could not finalize virtual disk")
+            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Disk created, but metadata finalization failed; use Sync saved profile metadata to recover")
             toast("Created private raw disk: ${diskGb} GB logical size.")
             drawPage()
         } catch (e: Exception) {
