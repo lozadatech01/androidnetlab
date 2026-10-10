@@ -3,6 +3,7 @@ package dev.lozadatech.androidnetlab.next
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -13,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import dev.lozadatech.androidnetlab.next.runtime.QemuBinaryProbe
 import dev.lozadatech.androidnetlab.next.runtime.validateVmProfileName
 
 class MainActivity : Activity() {
@@ -43,6 +45,11 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var commandInput: EditText
     private var commandDraft = ""
+    private val importQemuRequestCode = 7128
+    private var qemuProbeVerified = false
+    private var qemuProbeRunning = false
+    private var qemuProbeDetail = "No Android ARM64 QEMU binary imported."
+    private var qemuProbeSha256: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +59,9 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         loadState()
+        if (qemuBinaryFile().isFile) {
+            qemuProbeDetail = "A QEMU candidate is installed in app-private storage. Run the smoke test before relying on it."
+        }
         if (keepAwake) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         render()
     }
@@ -123,7 +133,11 @@ class MainActivity : Activity() {
             else -> "No disk file created"
         }
         pageHost.addView(infoCard("Local storage", diskState, "A disk file is not an installed operating system or a bootable VM."))
-        pageHost.addView(infoCard("Runtime status", "Not connected", "QEMU is not integrated; Start VM cannot boot a guest yet."))
+        pageHost.addView(infoCard(
+            "QEMU runtime",
+            qemuRuntimeSubtitle(),
+            qemuProbeDetail
+        ))
         pageHost.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(chip("Manage VMs") { page = 2; render() }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(4) })
@@ -235,7 +249,7 @@ class MainActivity : Activity() {
     private fun drawVmManager() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
         body.addView(label("VM MANAGER", 11, muted, true))
-        body.addView(label("Guest profiles and resource controls • UI preview only", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
+        body.addView(label("Guest profiles, local storage, and runtime diagnostics", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
         body.addView(section("VM PROFILES"))
         (builtInProfiles + customProfiles).forEach { name ->
             body.addView(LinearLayout(this).apply {
@@ -319,6 +333,19 @@ class MainActivity : Activity() {
             body.addView(label("Updates profile.txt only; virtual disk contents are not changed.", 9, muted)
                 .apply { setPadding(dp(2), dp(3), dp(2), dp(4)) })
         }
+        body.addView(section("QEMU RUNTIME CHECK"))
+        body.addView(infoCard("Android ARM64 executable", qemuRuntimeSubtitle(), qemuProbeDetail))
+        body.addView(chip(
+            when {
+                qemuProbeRunning -> "QEMU smoke test running…"
+                qemuBinaryFile().isFile -> "Retest / replace QEMU binary"
+                else -> "Import & test QEMU ARM64 binary"
+            }
+        ) { if (!qemuProbeRunning) confirmImportQemuBinary() }, LinearLayout.LayoutParams(-1, dp(40)))
+        body.addView(label(
+            "This verifies --version, the generic virt machine, and TCG from the app sandbox. It does not boot a guest.",
+            9, muted
+        ).apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
         body.addView(chip("▶ Start selected VM") { showRuntimeUnavailableDialog() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
@@ -642,10 +669,93 @@ class MainActivity : Activity() {
         return if (virtualDiskFile(name).isFile) 0xFF86EFAC.toInt() else muted
     }
 
-    private fun showRuntimeUnavailableDialog() {
+    private fun qemuBinaryFile() = java.io.File(filesDir, "runtime/qemu-system-aarch64")
+
+    private fun qemuRuntimeSubtitle(): String = when {
+        qemuProbeRunning -> "Smoke test running"
+        qemuProbeVerified -> "Executable smoke test passed"
+        qemuBinaryFile().isFile -> "Candidate installed • not validated"
+        else -> "Not installed"
+    }
+
+    private fun confirmImportQemuBinary() {
         AlertDialog.Builder(this)
-            .setTitle("VM runtime unavailable")
-            .setMessage("Profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode\n\nThese are saved configuration values only. AndroidNetLab does not yet include a validated QEMU runtime, so no guest can boot and no virtual network will start.")
+            .setTitle("Import Android ARM64 QEMU?")
+            .setMessage(
+                "Choose the qemu-system-aarch64-android-arm64 executable from the AndroidNetLab QEMU CI artifact. " +
+                    "The app copies it into private storage and runs only --version, -machine help, and -accel help. " +
+                    "Only import a binary from a source you trust. Android may forbid executing a binary from app-private storage. " +
+                    "This test does not boot a guest or enable networking."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Choose file") { _, _ -> launchQemuFilePicker() }
+            .show()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun launchQemuFilePicker() {
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivityForResult(intent, importQemuRequestCode)
+        } catch (error: Exception) {
+            toast("Could not open file picker: ${error.message ?: "unknown error"}")
+        }
+    }
+
+    @Deprecated("Uses the platform document picker for compatibility with the native Activity UI")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != importQemuRequestCode || resultCode != RESULT_OK) return
+        val uri = data?.data ?: run { toast("No file was selected."); return }
+
+        qemuProbeRunning = true
+        qemuProbeVerified = false
+        qemuProbeSha256 = null
+        qemuProbeDetail = "Importing candidate and testing it inside AndroidNetLab…"
+        if (::pageHost.isInitialized) drawPage()
+
+        Thread({
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("The selected file could not be opened.")
+                val executable = input.use { QemuBinaryProbe.install(it, filesDir) }
+                val result = QemuBinaryProbe.probe(executable)
+                runOnUiThread {
+                    qemuProbeRunning = false
+                    qemuProbeVerified = result.success
+                    qemuProbeDetail = result.detail
+                    qemuProbeSha256 = result.sha256
+                    if (!result.sha256.isNullOrBlank()) {
+                        qemuProbeDetail += "\nSHA-256: ${result.sha256}"
+                    }
+                    if (!isFinishing && ::pageHost.isInitialized) drawPage()
+                    toast(if (result.success) "QEMU executable smoke test passed." else "QEMU smoke test failed; see diagnostic details.")
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    qemuProbeRunning = false
+                    qemuProbeVerified = false
+                    qemuProbeDetail = "QEMU import/test failed: ${error.message ?: error.javaClass.simpleName}"
+                    if (!isFinishing && ::pageHost.isInitialized) drawPage()
+                    toast("QEMU import failed.")
+                }
+            }
+        }, "qemu-binary-import-probe").start()
+    }
+
+    private fun showRuntimeUnavailableDialog() {
+        val message = if (qemuProbeVerified) {
+            "The QEMU executable passed its app-sandbox smoke test. However, AndroidNetLab does not yet connect guest kernel/rootfs artifacts to a managed VM lifecycle or live serial console. No guest has been started.\n\nSelected profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode"
+        } else {
+            "Profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode\n\nNo validated QEMU executable is available in this app session. Import and test the Android ARM64 candidate first. No guest has been started."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (qemuProbeVerified) "Guest boot is not connected yet" else "VM runtime not validated")
+            .setMessage(message)
             .setPositiveButton("OK", null)
             .show()
     }
@@ -666,8 +776,12 @@ class MainActivity : Activity() {
             body.addView(chip(if (layoutMode == index) "✓ $title" else title) { layoutMode = index; drawPage() },
                 LinearLayout.LayoutParams(-1, dp(36)).apply { bottomMargin = dp(4) })
         }
-        body.addView(section("RUNTIME (PLANNED)"))
-        body.addView(infoCard("QEMU runtime", "Not connected yet", "Guest boot, disk images, snapshots and virtual networking are later milestones."))
+        body.addView(section("RUNTIME DIAGNOSTICS"))
+        body.addView(infoCard("QEMU executable", qemuRuntimeSubtitle(), qemuProbeDetail))
+        body.addView(chip("Import / retest Android ARM64 QEMU") { if (!qemuProbeRunning) confirmImportQemuBinary() },
+            LinearLayout.LayoutParams(-1, dp(40)))
+        body.addView(label("An executable smoke-test pass is not a guest-boot pass. Guest kernel/rootfs launch, live serial I/O, reliable stop/restart, and isolated networking still need integration and device testing.", 9, muted)
+            .apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
         body.addView(section("ABOUT"))
         body.addView(infoCard("AndroidNetLab • v0.1 UI", "Four workspace destinations", "Overview, Multi-window, VM Manager and Lab Settings are navigable."))
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
