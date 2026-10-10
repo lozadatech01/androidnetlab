@@ -83,6 +83,13 @@ class MainActivity : Activity() {
         render()
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Keep the Activity that owns QEMU's process handles alive across rotation.
+        // Rebuild the compact/portrait UI without replacing the guest process.
+        render()
+    }
+
     private fun render() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
