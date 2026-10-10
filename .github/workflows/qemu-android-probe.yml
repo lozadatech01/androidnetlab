@@ -162,8 +162,7 @@ jobs:
               -Ddefault_library=static -Dtests=false -Dinstalled_tests=false \
               -Dman-pages=disabled -Dintrospection=disabled -Dlibmount=disabled \
               -Dselinux=disabled -Dlibelf=disabled -Dsystemtap=disabled \
-              -Dgtk_doc=false -Ddocumentation=false -Dnls=disabled -Dglib_debug=disabled \
-              -Diconv=libc
+              -Dgtk_doc=false -Ddocumentation=false -Dnls=disabled -Dglib_debug=disabled
             ninja -C android-deps-src/glib-build -j2 install
 
             # Pixman is the other mandatory QEMU host library for this target.
