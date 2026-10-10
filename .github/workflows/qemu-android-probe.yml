@@ -85,8 +85,21 @@ jobs:
           printf '%s\n' "$result" > ../qemu-android-configure-exit-code.txt
           if [ "$result" -eq 0 ]; then
             echo "CONFIGURE_RESULT=passed" | tee ../qemu-android-probe-result.txt
+            {
+              echo "### QEMU Android configure diagnostics"
+              echo "Configure accepted the NDK toolchain. This is not a full build or device-runtime pass."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "CONFIGURE_RESULT=blocked (inspect qemu-android-configure.log)" | tee ../qemu-android-probe-result.txt
+            {
+              echo "### QEMU Android configure diagnostics"
+              echo "Configure exit code: $result"
+              echo 'Last 100 lines of qemu-android-configure.log:'
+              echo '~~~text'
+              tail -n 100 ../qemu-android-configure.log
+              echo '~~~'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "::warning::QEMU Android configure probe is blocked; inspect the summary and uploaded logs."
           fi
           # This is a diagnostic probe: preserve artifacts even if upstream
           # configure cannot support the Android/Bionic host. The result file
