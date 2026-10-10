@@ -13,7 +13,7 @@ The Linux guest workflow now:
 2. Verifies both artifacts exist and are non-empty.
 3. Reports kernel/rootfs sizes, Buildroot target filesystem usage, shared-library file count, and whether common GUI/audio files are present.
 4. Boots the guest with QEMU using one emulated vCPU, 256 MiB of configured guest RAM, and a virtual NIC.
-5. Requires a recognizable Buildroot login/banner in the serial output and records host-side QEMU resource measurements.
+5. Requires a recognizable Buildroot login/banner in the serial output and records host-side QEMU resource measurements.\n6. Attempts to collect the guest's own process list, memory info, mounts, and interfaces through its serial login.\n7. Starts two guest instances with separate disk copies on an isolated QEMU socket Ethernet segment and tests ping in both directions.
 
 The GUI/audio inventory is diagnostic rather than a hard failure: package contents are reported before making aggressive removals that might break the image. Shared libraries are not removed just because they are `.so` files; some are required for boot and networking. CI also attempts a serial-console login to collect the guest's own process list, `/proc/meminfo`, mounts, and network interfaces. This is best-effort; if login automation cannot authenticate, the report explicitly says the guest diagnostics were skipped rather than substituting host process data.
 
@@ -21,7 +21,7 @@ The GUI/audio inventory is diagnostic rather than a hard failure: package conten
 
 A successful CI smoke test proves the generated image can reach its console under the CI version of QEMU. The reported QEMU RSS and CPU time are measurements of the emulated guest process on a GitHub-hosted x86_64 runner, **not** expected Android RAM use or speed. The 256 MiB value is configured guest RAM, not measured physical RAM consumption.
 
-These checks do not yet prove that the image boots in the Android app, that Android hardware acceleration is available, or that two guests can exchange ARP/ICMP. Those require runtime integration and later device testing.
+These checks do not prove that the image boots in the Android app or that Android hardware acceleration is available. The two-guest network test validates the guest images and QEMU socket networking on CI only; it does not prove Android runtime integration. Guest process/memory diagnostics are best-effort and explicitly report when console login automation is unsuccessful.
 
 ## Next milestones
 
