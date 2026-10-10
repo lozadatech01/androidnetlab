@@ -243,7 +243,7 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
                     addView(label(name, 11, if (profile == name) blue else white, true))
-                    addView(label(if (name == "Alpine Linux") "Lightweight starter profile" else "ARM64 profile preview", 9, muted))
+                    addView(label(profileSummary(name), 9, muted))
                 })
                 addView(chip(if (profile == name) "✓ Selected" else "Select") {
                     if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
@@ -317,7 +317,7 @@ class MainActivity : Activity() {
             body.addView(label("Updates profile.txt only; virtual disk contents are not changed.", 9, muted)
                 .apply { setPadding(dp(2), dp(3), dp(2), dp(4)) })
         }
-        body.addView(chip("▶ Start selected VM") { toast("Disk/profile are local, but QEMU is not installed yet. No guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        body.addView(chip("▶ Start selected VM") { showRuntimeUnavailableDialog() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
     }
@@ -609,6 +609,30 @@ class MainActivity : Activity() {
             drawPage()
         }
     }
+    private fun profileSummary(name: String): String {
+        val defaults = when (name) {
+            "Alpine Linux" -> intArrayOf(512, 1, 4)
+            "Debian Linux" -> intArrayOf(1024, 1, 6)
+            "Buildroot Minimal" -> intArrayOf(256, 1, 2)
+            "Custom ARM64 VM" -> intArrayOf(512, 1, 4)
+            else -> intArrayOf(512, 1, 4)
+        }
+        val memory = prefs.getInt(profileKey(name, "ram_mb"), prefs.getInt(legacyProfileKey(name, "ram_mb"), if (name == profile) ramMb else defaults[0]))
+        val cpus = prefs.getInt(profileKey(name, "cpu_count"), prefs.getInt(legacyProfileKey(name, "cpu_count"), if (name == profile) cpuCount else defaults[1]))
+        val disk = prefs.getInt(profileKey(name, "disk_gb"), prefs.getInt(legacyProfileKey(name, "disk_gb"), if (name == profile) diskGb else defaults[2]))
+        val network = prefs.getString(profileKey(name, "network_mode"), prefs.getString(legacyProfileKey(name, "network_mode"), if (name == profile) networkMode else if (name == "Buildroot Minimal") "Isolated" else "User NAT")) ?: "User NAT"
+        val selected = if (name == profile) " • selected" else ""
+        return "$memory MiB • $cpus vCPU • $disk GiB • $network$selected"
+    }
+
+    private fun showRuntimeUnavailableDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("VM runtime unavailable")
+            .setMessage("Profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode\n\nThese are saved configuration values only. AndroidNetLab does not yet include a validated QEMU runtime, so no guest can boot and no virtual network will start.")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
     private fun drawSettings() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
         body.addView(label("LAB SETTINGS", 11, muted, true))
