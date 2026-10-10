@@ -12,7 +12,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView\nimport dev.lozadatech.androidnetlab.next.runtime.validateVmProfileName
+import android.widget.TextView
+import dev.lozadatech.androidnetlab.next.runtime.validateVmProfileName
 
 class MainActivity : Activity() {
     private val bg = 0xFF080B12.toInt()
