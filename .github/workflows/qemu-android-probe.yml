@@ -186,6 +186,28 @@ jobs:
           echo "QEMU_SOURCE_DIR=$PWD/qemu-9.2.0" >> "$GITHUB_ENV"
           printf 'QEMU_VERSION=9.2.0\nSOURCE_URL=https://download.qemu.org/qemu-9.2.0.tar.xz\n' > qemu-source.txt
 
+      - name: Disable optional POSIX shm backend missing from Android Bionic
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Android Bionic intentionally does not provide shm_open/shm_unlink.
+          # The initial guest profile does not need QEMU's optional
+          # memory-backend-shm backend, so remove only that backend source
+          # from the pinned QEMU build graph; regular RAM and file-backed
+          # storage remain enabled.
+          grep -n "hostmem-shm.c" "$QEMU_SOURCE_DIR/backends/meson.build"
+          sed -i "/files('hostmem-shm.c')/d" "$QEMU_SOURCE_DIR/backends/meson.build"
+          if grep -q "hostmem-shm.c" "$QEMU_SOURCE_DIR/backends/meson.build"; then
+            echo "Failed to disable Android-incompatible hostmem-shm backend." >&2
+            exit 1
+          fi
+          printf '%s\n' \
+            "QEMU source: 9.2.0" \
+            "Android patch: omit optional backends/hostmem-shm.c" \
+            "Reason: Android Bionic does not implement shm_open/shm_unlink" \
+            "Scope: first guest uses regular RAM and file-backed disk; shared-memory backend is not required" \
+            > qemu-android-patches.txt
+
       - name: Probe QEMU configure for Android host
         id: probe
         shell: bash
@@ -302,6 +324,7 @@ jobs:
             android-elf.txt
             android-elf-header.txt
             qemu-source.txt
+            qemu-android-patches.txt
             android-deps-build.log
             android-deps-build-exit-code.txt
             android-deps-build-result.txt
