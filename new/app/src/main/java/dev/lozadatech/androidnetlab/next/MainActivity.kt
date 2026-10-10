@@ -747,15 +747,20 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun launchQemuFilePicker() = launchDocumentPicker(importQemuRequestCode)
+
+    private fun launchGuestArtifactFilePicker(kernel: Boolean) =
+        launchDocumentPicker(if (kernel) importKernelRequestCode else importRootfsRequestCode)
+
     @Suppress("DEPRECATION")
-    private fun launchQemuFilePicker() {
+    private fun launchDocumentPicker(requestCode: Int) {
         try {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivityForResult(intent, importQemuRequestCode)
+            startActivityForResult(intent, requestCode)
         } catch (error: Exception) {
             toast("Could not open file picker: ${error.message ?: "unknown error"}")
         }
@@ -764,12 +769,24 @@ class MainActivity : Activity() {
     @Deprecated("Uses the platform document picker for compatibility with the native Activity UI")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != importQemuRequestCode || resultCode != RESULT_OK) return
+        if (requestCode !in listOf(importQemuRequestCode, importKernelRequestCode, importRootfsRequestCode)) return
+        if (resultCode != RESULT_OK) return
         val uri = data?.data ?: run { toast("No file was selected."); return }
 
+        when (requestCode) {
+            importQemuRequestCode -> importQemuCandidate(uri)
+            importKernelRequestCode -> importGuestArtifact(uri, kernel = true)
+            importRootfsRequestCode -> importGuestArtifact(uri, kernel = false)
+        }
+    }
+
+    private fun importQemuCandidate(uri: android.net.Uri) {
+        if (activeGuestProcess != null || activeVmState == VmState.RUNNING || activeVmState == VmState.STARTING) {
+            toast("Stop the guest before replacing QEMU.")
+            return
+        }
         qemuProbeRunning = true
         qemuProbeVerified = false
-        qemuProbeSha256 = null
         qemuProbeDetail = "Importing candidate and testing it inside AndroidNetLab…"
         if (::pageHost.isInitialized) drawPage()
 
@@ -783,9 +800,13 @@ class MainActivity : Activity() {
                     qemuProbeRunning = false
                     qemuProbeVerified = result.success
                     qemuProbeDetail = result.detail
-                    qemuProbeSha256 = result.sha256
-                    if (!result.sha256.isNullOrBlank()) {
-                        qemuProbeDetail += "\nSHA-256: ${result.sha256}"
+                    if (!result.sha256.isNullOrBlank()) qemuProbeDetail += "\nSHA-256: ${result.sha256}"
+                    if (result.success && activeGuestProcess == null) {
+                        activeVmState = VmState.STOPPED
+                        activeVmStateDetail = "QEMU executable passed its app-sandbox smoke test; no guest is running."
+                    } else if (!result.success) {
+                        activeVmState = VmState.UNAVAILABLE
+                        activeVmStateDetail = result.detail
                     }
                     if (!isFinishing && ::pageHost.isInitialized) drawPage()
                     toast(if (result.success) "QEMU executable smoke test passed." else "QEMU smoke test failed; see diagnostic details.")
@@ -795,6 +816,8 @@ class MainActivity : Activity() {
                     qemuProbeRunning = false
                     qemuProbeVerified = false
                     qemuProbeDetail = "QEMU import/test failed: ${error.message ?: error.javaClass.simpleName}"
+                    activeVmState = VmState.UNAVAILABLE
+                    activeVmStateDetail = qemuProbeDetail
                     if (!isFinishing && ::pageHost.isInitialized) drawPage()
                     toast("QEMU import failed.")
                 }
@@ -802,6 +825,41 @@ class MainActivity : Activity() {
         }, "qemu-binary-import-probe").start()
     }
 
+    private fun importGuestArtifact(uri: android.net.Uri, kernel: Boolean) {
+        if (activeGuestProcess != null || activeVmState == VmState.RUNNING || activeVmState == VmState.STARTING || guestArtifactImportRunning) {
+            toast("Stop the guest and finish any current import first.")
+            return
+        }
+        guestArtifactImportRunning = true
+        if (::pageHost.isInitialized) drawPage()
+        Thread({
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("The selected file could not be opened.")
+                val installed = input.use {
+                    if (kernel) GuestArtifactStore.installKernel(it, filesDir)
+                    else GuestArtifactStore.installRootfs(it, filesDir)
+                }
+                runOnUiThread {
+                    guestArtifactImportRunning = false
+                    activeVmStateDetail = if (kernel) {
+                        "AArch64 kernel Image imported: ${formatMiB(installed.length())}."
+                    } else {
+                        "Buildroot ext2 rootfs imported: ${formatMiB(installed.length())}. A separate writable copy is made per profile."
+                    }
+                    if (!isFinishing && ::pageHost.isInitialized) drawPage()
+                    toast(if (kernel) "AArch64 kernel Image imported." else "Buildroot rootfs imported.")
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    guestArtifactImportRunning = false
+                    activeVmStateDetail = "Guest artifact import failed: ${error.message ?: error.javaClass.simpleName}"
+                    if (!isFinishing && ::pageHost.isInitialized) drawPage()
+                    toast("Guest artifact import failed.")
+                }
+            }
+        }, if (kernel) "guest-kernel-import" else "guest-rootfs-import").start()
+    }
     private fun showRuntimeUnavailableDialog() {
         val message = if (qemuProbeVerified) {
             "The QEMU executable passed its app-sandbox smoke test. However, AndroidNetLab does not yet connect guest kernel/rootfs artifacts to a managed VM lifecycle or live serial console. No guest has been started.\n\nSelected profile: $profile\nMemory: $ramMb MiB\nvCPU: $cpuCount\nVirtual disk setting: $diskGb GiB\nNetwork setting: $networkMode"
