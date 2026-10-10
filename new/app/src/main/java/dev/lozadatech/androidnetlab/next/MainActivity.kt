@@ -306,8 +306,10 @@ class MainActivity : Activity() {
     }
 
     private fun profileKey(name: String, field: String): String {
-        val encodedName = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(name.toByteArray(Charsets.UTF_8))
+        val encodedName = android.util.Base64.encodeToString(
+            name.toByteArray(Charsets.UTF_8),
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+        )
         return "vm_profile.v2.$encodedName.$field"
     }
 
