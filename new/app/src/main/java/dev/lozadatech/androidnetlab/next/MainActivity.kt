@@ -404,6 +404,12 @@ class MainActivity : Activity() {
             .setMessage("Remove the custom profile \"$name\" and its saved settings? Any disk.img and profile.txt files will be kept in app storage and will NOT be deleted. If another profile has a conflicting legacy path, its disk access may remain blocked until that conflict is resolved.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete profile") { _, _ ->
+                // Keep a legacy disk path blocked while two profile names could refer to it.
+                // Removing one of those profiles would otherwise silently reassign its disk.
+                if (hasLegacyDiskPathCollision(name) && legacyVirtualDiskFile(name).isFile) {
+                    toast("Cannot delete this profile safely: a legacy disk path is shared by similarly named profiles. Back up and resolve the disk conflict first.")
+                    return@setPositiveButton
+                }
                 customProfiles.removeAll { it.equals(name, ignoreCase = true) }
                 prefs.edit()
                     .remove(profileKey(name, "ram_mb"))
