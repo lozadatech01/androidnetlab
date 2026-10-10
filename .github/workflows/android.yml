@@ -18,6 +18,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Verify stable package boundaries
+        run: bash new/verify-package-boundaries.sh
       - name: Build new Android app
         run: gradle --no-daemon -p new assembleDebug
       - uses: actions/upload-artifact@v4
