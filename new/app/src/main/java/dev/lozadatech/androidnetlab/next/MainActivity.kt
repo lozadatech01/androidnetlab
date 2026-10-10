@@ -290,10 +290,12 @@ class MainActivity : Activity() {
             "Custom ARM64 VM" -> intArrayOf(512, 1, 4)
             else -> intArrayOf(ramMb, cpuCount, diskGb)
         }
-        ramMb = prefs.getInt(profileKey(name, "ram_mb"), defaults[0]).coerceIn(128, 2048)
-        cpuCount = prefs.getInt(profileKey(name, "cpu_count"), defaults[1]).coerceIn(1, 4)
-        diskGb = prefs.getInt(profileKey(name, "disk_gb"), defaults[2]).coerceIn(2, 32)
-        networkMode = prefs.getString(profileKey(name, "network_mode"), if (name == "Buildroot Minimal") "Isolated" else "User NAT") ?: "User NAT"
+        // Preserve the old single-profile settings during migration for the previously selected profile.
+        ramMb = prefs.getInt(profileKey(name, "ram_mb"), if (name == profile) prefs.getInt("ram_mb", defaults[0]) else defaults[0]).coerceIn(128, 2048)
+        cpuCount = prefs.getInt(profileKey(name, "cpu_count"), if (name == profile) prefs.getInt("cpu_count", defaults[1]) else defaults[1]).coerceIn(1, 4)
+        diskGb = prefs.getInt(profileKey(name, "disk_gb"), if (name == profile) prefs.getInt("disk_gb", defaults[2]) else defaults[2]).coerceIn(2, 32)
+        val legacyNetwork = if (name == profile) prefs.getString("network_mode", "User NAT") else null
+        networkMode = prefs.getString(profileKey(name, "network_mode"), legacyNetwork ?: if (name == "Buildroot Minimal") "Isolated" else "User NAT") ?: "User NAT"
     }
 
     private fun saveProfileSettings(name: String) {
