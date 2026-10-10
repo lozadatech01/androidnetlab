@@ -8,7 +8,10 @@ Prototype 0.1 focuses on a native Android dashboard, measurable host/app diagnos
 
 ## Runtime research
 
-See [`docs/ANDROID_RUNTIME_RESEARCH.md`](docs/ANDROID_RUNTIME_RESEARCH.md) for the researched runtime options, Android constraints, proposed architecture, networking plan, optimization hypotheses, and validation gates. This is a proposal; it does not claim that guest execution is already integrated.
+- [`docs/ANDROID_RUNTIME_RESEARCH.md`](docs/ANDROID_RUNTIME_RESEARCH.md) — Android runtime feasibility, Linux guest design, resource optimization, and validation gates.
+- [`docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md`](docs/VM_SOCKETS_AND_VIRTUAL_NETWORKS.md) — how QEMU network sockets, plugs, links, and shared virtual LANs can connect independent VMs.
+
+These are engineering proposals and test plans; they do not claim Android guest execution is already integrated.
 
 ## Repository layout
 
