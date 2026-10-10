@@ -1,6 +1,6 @@
 # Android QEMU Build Spike
 
-**Status:** Preparation only. No Android-compatible QEMU binary has been built or run yet.
+**Status:** An Android ARM64 QEMU candidate has been cross-built in CI. It has **not** been executed on an Android device, TCG guest code has not been validated under Android's memory protections, and no guest boot is claimed.
 
 ## Goal
 
@@ -24,11 +24,9 @@ Therefore, use a staged investigation rather than assuming a normal Linux build 
 
 Workflow: `.github/workflows/qemu-android-probe.yml`.
 
-Run it manually from the repository's **Actions** tab or let it run when runtime-spike files change. It pins Android NDK r27c (revision `27.2.12479018`) and QEMU 9.2.0, first proves the NDK emits an AArch64 Android ELF, then captures QEMU's configure diagnostics for that toolchain. The artifact is named `qemu-android-ndk-probe-evidence`.
+Run it manually from the repository's **Actions** tab or let it run when runtime-spike files change. It pins Android NDK r27c (revision `27.2.12479018`) and upstream QEMU 9.2.0 for Android API 28 / `arm64-v8a`. The workflow cross-builds Android-target dependencies (libffi, zlib, PCRE2, GLib/GObject, and Pixman), applies one narrowly scoped Bionic compatibility patch (disables QEMU's optional POSIX shared-memory backend), configures only `aarch64-softmmu` with TCG, and builds the candidate. Evidence and the candidate executable are uploaded as `qemu-android-ndk-probe-evidence`.
 
-This workflow is deliberately diagnostic: a green workflow means the probe ran and preserved evidence, **not** that QEMU configured or built. Check `qemu-android-probe-result.txt`, `qemu-android-configure-exit-code.txt`, and any build result/log. A configure failure is an actionable compatibility/dependency blocker, not a runtime pass. Even a build pass only produces a candidate artifact; Android device execution, TCG JIT behavior, guest boot, stop/restart, and performance remain separate gates.
-
-The probe initially uses runner-provided libraries to expose the first upstream configure/build barrier. If QEMU rejects the target or requires Android-built dependencies/patches, record that exact failure and extend the experiment rather than packaging a Linux-host binary or changing the UI to imply a VM can boot.
+A successful configure/build is a **cross-build result only**. Inspect `qemu-android-probe-result.txt`, `qemu-android-build-result.txt`, the ELF report, and build logs. A green diagnostic job by itself only means evidence was captured: read the result files. The stripped candidate has not yet been executed on a real Android device; TCG JIT behavior, guest boot, stop/restart, app-sandbox execution, and performance remain separate gates.
 
 ## Required evidence
 
