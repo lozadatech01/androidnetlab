@@ -38,7 +38,7 @@ mkdir -p "$DIST_DIR"
   while :; do
     {
       echo "===== $(date -u +%FT%TZ) ====="
-      ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | head -n 25
+      ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | sed -n '1,25p'
       echo
     } >> "$DIST_DIR/build-process-samples.txt"
     sleep 10
