@@ -19,7 +19,7 @@ jobs:
         run: bash vm/build-guest.sh
       - name: Boot guest in QEMU and capture smoke metrics
         run: bash vm/test-guest.sh
-      - name: Collect in-guest process, memory, and network diagnostics\n        run: python3 vm/guest-diagnostics.py\n      - name: Upload guest image and test reports
+      - name: Collect in-guest process, memory, and network diagnostics\n        run: python3 vm/guest-diagnostics.py\n      - name: Test isolated two-guest Ethernet and ICMP\n        run: python3 vm/test-two-guest-network.py\n      - name: Upload guest image and test reports
         uses: actions/upload-artifact@v4
         with:
           name: androidnetlab-linux-guest-aarch64
