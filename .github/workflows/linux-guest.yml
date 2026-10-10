@@ -23,6 +23,8 @@ jobs:
         run: python3 vm/guest-diagnostics.py
       - name: Test isolated two-guest Ethernet and ICMP
         run: python3 vm/test-two-guest-network.py
+      - name: Test multiple logical devices inside one guest
+        run: python3 vm/test-single-guest-devices.py
       - name: Upload guest image and test reports
         uses: actions/upload-artifact@v4
         with:
