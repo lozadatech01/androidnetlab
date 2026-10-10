@@ -246,7 +246,12 @@ class MainActivity : Activity() {
         })
         body.addView(label("*Bridge support depends on Android/device networking.", 9, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
         body.addView(chip("+ Create VM profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(40)))
-        body.addView(chip("Create virtual disk (${diskGb} GB)") { createVirtualDisk() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        val diskFile = virtualDiskFile(profile)
+        val diskStatus = if (diskFile.isFile) "Disk exists • ${formatBytes(diskFile.length())}" else "No virtual disk created for this profile"
+        body.addView(label(diskStatus, 10, if (diskFile.isFile) 0xFF86EFAC.toInt() else muted).apply { setPadding(dp(2), dp(6), dp(2), dp(3)) })
+        body.addView(chip(if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
+            if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else createVirtualDisk()
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         body.addView(chip("▶ Start selected VM") { toast("Disk/profile are local, but QEMU is not installed yet. No guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
@@ -330,20 +335,37 @@ class MainActivity : Activity() {
                 }
             }.show()
     }
+    private fun virtualDiskFile(name: String): java.io.File {
+        val safeName = name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-').ifBlank { "vm" }
+        val identity = Integer.toUnsignedString(name.hashCode(), 16)
+        return java.io.File(filesDir, "vms/$safeName-$identity/disk.img")
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val gib = bytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
+        return String.format(java.util.Locale.ROOT, "%.2f GiB logical", gib)
+    }
+
     private fun createVirtualDisk() {
-        val safeName = profile.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").ifBlank { "vm" }
-        val vmDir = java.io.File(filesDir, "vms/$safeName")
-        val disk = java.io.File(vmDir, "disk.img")
+        val disk = virtualDiskFile(profile)
+        val vmDir = disk.parentFile ?: throw java.io.IOException("Invalid VM storage path")
+        val tempDisk = java.io.File(vmDir, "disk.img.creating")
         val requestedBytes = diskGb.toLong() * 1024L * 1024L * 1024L
         try {
             if (disk.exists()) { toast("Disk already exists; existing data was preserved."); return }
+            if (tempDisk.exists()) { toast("An incomplete disk creation file exists; inspect app storage before retrying."); return }
             if (requestedBytes > filesDir.usableSpace - 64L * 1024L * 1024L) { toast("Not enough app storage. Free space or reduce disk size."); return }
             if (!vmDir.exists() && !vmDir.mkdirs()) throw java.io.IOException("Could not create VM storage directory")
-            java.io.RandomAccessFile(disk, "rw").use { it.setLength(requestedBytes) }
-            java.io.File(vmDir, "profile.txt").writeText("name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n")
+            if (!tempDisk.createNewFile()) throw java.io.IOException("Could not reserve temporary disk file")
+            java.io.RandomAccessFile(tempDisk, "rw").use { it.setLength(requestedBytes) }
+            val metadata = java.io.File(vmDir, "profile.txt")
+            val tempMetadata = java.io.File(vmDir, "profile.txt.tmp")
+            tempMetadata.writeText("name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n")
+            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Could not finalize VM metadata")
+            if (disk.exists() || !tempDisk.renameTo(disk)) throw java.io.IOException("Could not finalize virtual disk")
             toast("Created private raw disk: ${diskGb} GB logical size.")
         } catch (e: Exception) {
-            if (disk.exists() && disk.length() == 0L) disk.delete()
+            if (tempDisk.exists()) tempDisk.delete()
             toast("Disk creation failed: ${e.message ?: "storage error"}")
         }
     }
