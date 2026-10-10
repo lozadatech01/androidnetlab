@@ -141,7 +141,7 @@ class MainActivity : Activity() {
                 addView(chip(if (windowCount == count) "✓ $count" else "$count") { windowCount = count; activeWindow = activeWindow.coerceAtMost(count); drawPage() },
                     LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(3) })
             }
-            addView(chip(if (showKeyboard) "Keys off" else "Keys on") { showKeyboard = !showKeyboard; hideNativeKeyboard(); drawPage() },
+            addView(chip(if (showKeyboard) "Hide keys" else "Show keys") { showKeyboard = !showKeyboard; hideNativeKeyboard(); drawPage() },
                 LinearLayout.LayoutParams(-2, dp(32)).apply { marginStart = dp(4) })
         })
         val panels = LinearLayout(this).apply {
