@@ -31,7 +31,7 @@ class MainActivity : Activity() {
     private val startTime = System.currentTimeMillis()
     private val vmDir by lazy { File(filesDir, "vms").apply { mkdirs() } }
     private val refresh = object : Runnable {
-        override fun run() { updateMetrics(); handler.postDelayed(this, 2000) }
+        override fun run() { updateMetrics(); handler.postDelayed(this, 5000) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
