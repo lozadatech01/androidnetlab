@@ -17,14 +17,6 @@ sed -i \
   -e 's/^BR2_PACKAGE_HOST_QEMU=y/# BR2_PACKAGE_HOST_QEMU is not set/' \
   -e 's/^BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE=y/# BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE is not set/' \
   "$WORK/.config"
-
-# Support multiple lightweight logical devices inside one guest kernel.
-# iproute2 provides `ip netns`; the kernel fragment enables netns, veth,
-# bridge, and 802.1Q VLAN support without requiring Android-host root.
-cat >> "$WORK/.config" <<EOF
-BR2_PACKAGE_IPROUTE2=y
-BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$ROOT/vm/kernel-network-namespaces.fragment"
-EOF
 make -C "$WORK" olddefconfig
 
 grep -q '^BR2_aarch64=y$' "$WORK/.config"
