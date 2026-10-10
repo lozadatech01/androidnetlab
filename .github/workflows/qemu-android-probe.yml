@@ -58,7 +58,27 @@ jobs:
           mkdir -p "$ANDROID_DEPS_PREFIX" "$CROSS_BIN" android-deps-src
           # Fail fast and still keep diagnostics for the always-run artifact step.
           exec > >(tee android-deps-build.log) 2>&1
-          trap 'result=$?; echo "$result" > android-deps-build-exit-code.txt; if [ "$result" -eq 0 ]; then echo "ANDROID_DEPS_RESULT=passed" > android-deps-build-result.txt; else echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" > android-deps-build-result.txt; { echo "### Android-target dependency build"; echo "Exit code: $result"; echo '~~~text'; tail -n 100 android-deps-build.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
+          finish_dependency_build() {
+            result=$?
+            echo "$result" > android-deps-build-exit-code.txt
+            if [ "$result" -eq 0 ]; then
+              echo "ANDROID_DEPS_RESULT=passed" > android-deps-build-result.txt
+              {
+                echo "### Android-target dependency build"
+                echo "libffi, zlib, PCRE2, GLib/GObject, and Pixman built for Android ARM64."
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" > android-deps-build-result.txt
+              {
+                echo "### Android-target dependency build"
+                echo "Exit code: $result"
+                echo "~~~text"
+                tail -n 100 android-deps-build.log
+                echo "~~~"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          trap finish_dependency_build EXIT
           echo "ANDROID_DEPS_PREFIX=$ANDROID_DEPS_PREFIX" >> "$GITHUB_ENV"
           echo "CROSS_BIN=$CROSS_BIN" >> "$GITHUB_ENV"
           set -x
