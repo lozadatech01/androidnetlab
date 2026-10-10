@@ -256,7 +256,7 @@ class MainActivity : Activity() {
         val diskBytes = vmFiles.sumOf { it.length() }
         metrics.text = "DEVICE MEMORY\nTotal RAM: ${mem.totalMem.mb()} MiB\nAvailable RAM: ${mem.availMem.mb()} MiB\nLow-memory state: ${if (mem.lowMemory) "YES" else "No"}\n\n" +
             "APP MEMORY\nApp PSS: ${String.format(Locale.US, "%.1f", pssMb)} MiB\nRuntime heap used: $appUsed MiB\nRuntime heap max: ${runtime.maxMemory() / (1024 * 1024)} MiB\n\n" +
-            "VM LIBRARY\\nStored disk files: ${vmFiles.size}\\nTotal disk data: ${humanSize(diskBytes)}\\nFree app storage: ${humanSize(vmDir.usableSpace)}\\nSession uptime: ${elapsed}s\\n\\n" +
+            "VM LIBRARY\nStored disk files: ${vmFiles.size}\nTotal disk data: ${humanSize(diskBytes)}\nFree app storage: ${humanSize(vmDir.usableSpace)}\nSession uptime: ${elapsed}s\n\n" +
             "RUNTIME\nVM execution is not integrated yet. Imported images are stored and can be duplicated, but cannot boot from this prototype yet."
     }
 
