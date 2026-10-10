@@ -88,6 +88,11 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Unsupported type. Choose qcow2, img, raw, vdi, vhd, vhdx, or iso.", Toast.LENGTH_LONG).show()
             return
         }
+        val expectedSize = querySize(uri)
+        if (expectedSize != null && !hasSpace(expectedSize)) {
+            status.text = "Not enough free app storage to import this file. Free up space and try again."
+            return
+        }
         status.text = "Importing $displayName… Keep the app open."
         io.execute {
             try {
@@ -117,6 +122,7 @@ class MainActivity : Activity() {
                     while (true) {
                         val count = input.read(buffer)
                         if (count < 0) break
+                        if (vmDir.usableSpace < count + STORAGE_RESERVE_BYTES) throw IllegalStateException("Storage is nearly full. Free up space and retry.")
                         output.write(buffer, 0, count)
                     }
                     output.fd.sync()
@@ -133,6 +139,10 @@ class MainActivity : Activity() {
     }
 
     private fun createCopy(source: File) {
+        if (!hasSpace(source.length())) {
+            status.text = "Not enough free app storage to duplicate ${source.name}. Free up space first."
+            return
+        }
         status.text = "Copying ${source.name}…"
         io.execute {
             try {
@@ -193,6 +203,13 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun querySize(uri: Uri): Long? = contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0).takeIf { it >= 0 } else null
+    }
+
+    private fun hasSpace(bytesNeeded: Long): Boolean =
+        vmDir.usableSpace > bytesNeeded && vmDir.usableSpace - bytesNeeded >= STORAGE_RESERVE_BYTES
+
     private fun queryDisplayName(uri: Uri): String? {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.getString(0)
@@ -236,10 +253,10 @@ class MainActivity : Activity() {
         val elapsed = (System.currentTimeMillis() - startTime) / 1000
         val vmFiles = vmDir.listFiles()?.filter { it.isFile && !it.name.endsWith(".partial") }.orEmpty()
         val diskBytes = vmFiles.sumOf { it.length() }
-        metrics.text = "DEVICE MEMORY\\nTotal RAM: ${mem.totalMem.mb()} MiB\\nAvailable RAM: ${mem.availMem.mb()} MiB\\nLow-memory state: ${if (mem.lowMemory) "YES" else "No"}\\n\\n" +
-            "APP MEMORY\\nApp PSS: ${String.format(Locale.US, "%.1f", pssMb)} MiB\\nRuntime heap used: $appUsed MiB\\nRuntime heap max: ${runtime.maxMemory() / (1024 * 1024)} MiB\\n\\n" +
-            "VM LIBRARY\\nStored disk files: ${vmFiles.size}\\nTotal disk data: ${humanSize(diskBytes)}\\nSession uptime: ${elapsed}s\\n\\n" +
-            "RUNTIME\\nVM execution is not integrated yet. Imported images are stored and can be duplicated, but cannot boot from this prototype yet."
+        metrics.text = "DEVICE MEMORY\nTotal RAM: ${mem.totalMem.mb()} MiB\nAvailable RAM: ${mem.availMem.mb()} MiB\nLow-memory state: ${if (mem.lowMemory) "YES" else "No"}\n\n" +
+            "APP MEMORY\nApp PSS: ${String.format(Locale.US, "%.1f", pssMb)} MiB\nRuntime heap used: $appUsed MiB\nRuntime heap max: ${runtime.maxMemory() / (1024 * 1024)} MiB\n\n" +
+            "VM LIBRARY\nStored disk files: ${vmFiles.size}\nTotal disk data: ${humanSize(diskBytes)}\nSession uptime: ${elapsed}s\n\n" +
+            "RUNTIME\nVM execution is not integrated yet. Imported images are stored and can be duplicated, but cannot boot from this prototype yet."
     }
 
     private fun Long.mb(): Long = this / (1024L * 1024L)
@@ -255,6 +272,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_IMPORT = 101
+        private const val STORAGE_RESERVE_BYTES = 16L * 1024 * 1024
         private val SUPPORTED_EXTENSIONS = setOf("qcow2", "img", "raw", "vdi", "vhd", "vhdx", "iso")
     }
 }
