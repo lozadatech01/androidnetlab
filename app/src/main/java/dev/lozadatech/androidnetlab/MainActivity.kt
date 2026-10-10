@@ -118,7 +118,7 @@ class MainActivity : Activity() {
             contentResolver.openInputStream(uri).use { input ->
                 requireNotNull(input) { "Android could not open this file." }
                 FileOutputStream(temp).use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    val buffer = ByteArray(COPY_BUFFER_BYTES)
                     while (true) {
                         val count = input.read(buffer)
                         if (count < 0) break
@@ -152,7 +152,7 @@ class MainActivity : Activity() {
                 try {
                     source.inputStream().use { input ->
                         FileOutputStream(temp).use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            val buffer = ByteArray(COPY_BUFFER_BYTES)
                             while (true) {
                                 val count = input.read(buffer)
                                 if (count < 0) break
@@ -274,6 +274,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_IMPORT = 101
         private const val STORAGE_RESERVE_BYTES = 16L * 1024 * 1024
+        private const val COPY_BUFFER_BYTES = 1024 * 1024
         private val SUPPORTED_EXTENSIONS = setOf("qcow2", "img", "raw", "vdi", "vhd", "vhdx", "iso")
     }
 }
