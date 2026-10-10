@@ -404,15 +404,21 @@ class MainActivity : Activity() {
     }
 
     private fun showCreateProfileDialog() {
-        val input = EditText(this).apply { hint = "e.g. Alpine Test VM"; setSingleLine(true) }
+        val input = EditText(this).apply {
+            hint = "e.g. Alpine Test VM"
+            setSingleLine(true)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(40))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
         AlertDialog.Builder(this).setTitle("Create VM profile")
-            .setMessage("Save a local configuration profile. This does not create a disk or start QEMU.")
+            .setMessage("Save a local configuration profile. This does not create a disk or start QEMU. Names cannot contain control characters or line breaks.")
             .setView(input).setNegativeButton("Cancel", null)
             .setPositiveButton("Save profile") { _, _ ->
                 val name = input.text.toString().trim()
                 when {
                     name.isBlank() -> toast("Enter a profile name.")
-                    name.length > 40 -> toast("Keep the name under 40 characters.")
+                    name.any { it.isISOControl() } -> toast("Profile names cannot contain control characters or line breaks.")
                     (builtInProfiles + customProfiles).any { it.equals(name, ignoreCase = true) } -> toast("That profile already exists.")
                     else -> {
                         saveProfileSettings(profile)
