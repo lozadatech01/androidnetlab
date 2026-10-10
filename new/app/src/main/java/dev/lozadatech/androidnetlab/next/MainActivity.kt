@@ -238,6 +238,10 @@ class MainActivity : Activity() {
                 addView(chip(if (profile == name) "✓ Selected" else "Select") {
                     if (profile != name) { saveProfileSettings(profile); profile = name; loadProfileSettings(name); saveState(); drawPage() }
                 })
+                if (name in customProfiles) {
+                    addView(chip("Delete") { confirmDeleteProfile(name) },
+                        LinearLayout.LayoutParams(-2, dp(34)).apply { marginStart = dp(4) })
+                }
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
         }
         body.addView(section("RESOURCES"))
@@ -382,6 +386,34 @@ class MainActivity : Activity() {
         return (builtInProfiles + customProfiles).any { other ->
             !other.equals(name, ignoreCase = true) && legacyDiskSlug(other) == slug
         }
+    }
+
+    private fun confirmDeleteProfile(name: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete profile?")
+            .setMessage("Remove the custom profile \"$name\" and its saved settings? Any disk.img and profile.txt files will be kept in app storage and will NOT be deleted. If another profile has a conflicting legacy path, its disk access may remain blocked until that conflict is resolved.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete profile") { _, _ ->
+                customProfiles.removeAll { it.equals(name, ignoreCase = true) }
+                prefs.edit()
+                    .remove(profileKey(name, "ram_mb"))
+                    .remove(profileKey(name, "cpu_count"))
+                    .remove(profileKey(name, "disk_gb"))
+                    .remove(profileKey(name, "network_mode"))
+                    .remove(legacyProfileKey(name, "ram_mb"))
+                    .remove(legacyProfileKey(name, "cpu_count"))
+                    .remove(legacyProfileKey(name, "disk_gb"))
+                    .remove(legacyProfileKey(name, "network_mode"))
+                    .apply()
+                if (profile.equals(name, ignoreCase = true)) {
+                    profile = builtInProfiles.first()
+                    loadProfileSettings(profile)
+                }
+                saveState()
+                drawPage()
+                toast("Profile deleted. Disk files were kept.")
+            }
+            .show()
     }
 
     private fun virtualDiskFile(name: String): java.io.File {
