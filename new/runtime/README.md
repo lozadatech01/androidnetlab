@@ -4,7 +4,7 @@ A QEMU 9.2.0 Android ARM64 executable has been cross-built in CI as a **candidat
 
 ## Current next step
 
-Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the acceptance criteria. The [Android NDK compatibility probe](../../.github/workflows/qemu-android-probe.yml) now cross-builds a candidate for Android API 28 / ARM64 using NDK r27c and QEMU 9.2.0. The next gate is to verify `--version` and `-machine help` on an actual Android device, then execute guest code via TCG and boot the existing Buildroot guest. CI build success alone is not runtime proof.
+Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the acceptance criteria. The [Android NDK compatibility probe](../../.github/workflows/qemu-android-probe.yml) now cross-builds a candidate for Android API 28 / ARM64 using NDK r27c and QEMU 9.2.0. The next gate is to install the APK, use the **VMs → Import & test QEMU ARM64 binary** action with the candidate from [the successful QEMU build artifact](https://github.com/lozadatech01/androidnetlab/actions/runs/38092721218), and verify `--version`, `-machine help`, and `-accel help` in the app sandbox. After that, test translated guest execution via TCG and boot the existing Buildroot guest. CI build success alone is not runtime proof.
 
 ## Integration principles
 
