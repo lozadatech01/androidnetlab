@@ -43,4 +43,20 @@ class VmConfigTest {
             VmConfig(name = "other-machine", machine = "pc")
         }
     }
+
+    @Test
+    fun profileNameValidationAcceptsTrimmedUniqueNames() {
+        assertNull(validateVmProfileName("  Fedora Lab  ", listOf("Alpine Linux")))
+    }
+
+    @Test
+    fun profileNameValidationRejectsBlankLongControlAndDuplicateNames() {
+        assertEquals("Enter a profile name.", validateVmProfileName("   ", emptyList()))
+        assertEquals("Keep the name under 40 characters.", validateVmProfileName("x".repeat(41), emptyList()))
+        assertEquals(
+            "Profile names cannot contain control characters or line breaks.",
+            validateVmProfileName("Lab\\nOne", emptyList())
+        )
+        assertEquals("That profile already exists.", validateVmProfileName("debian linux", listOf("Debian Linux")))
+    }
 }
