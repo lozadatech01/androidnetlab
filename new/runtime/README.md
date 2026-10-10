@@ -4,7 +4,7 @@ No QEMU binary/library is bundled here yet. The app must report the runtime as u
 
 ## Current next step
 
-Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the Android compatibility investigation and its acceptance criteria. This is intentionally a gated proof of concept, not a promise that upstream QEMU will compile unchanged for Android.
+Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the Android compatibility investigation and its acceptance criteria. Run the [Android NDK compatibility probe](../../.github/workflows/qemu-android-probe.yml) from Actions to capture the pinned NDK/QEMU configure evidence. A green probe workflow only means evidence was captured; read its result file and exit codes. This is intentionally a gated proof of concept, not a promise that upstream QEMU will compile unchanged for Android.
 
 ## Integration principles
 
