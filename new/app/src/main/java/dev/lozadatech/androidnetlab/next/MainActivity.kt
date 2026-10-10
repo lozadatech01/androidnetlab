@@ -287,6 +287,14 @@ class MainActivity : Activity() {
                 body.addView(label("Automatic sync is blocked to avoid overwriting recoverable metadata. Back up the VM folder before manual repair.", 9, 0xFFFCA5A5.toInt())
                     .apply { setPadding(dp(2), dp(1), dp(2), dp(3)) })
             }
+            // Only offer automated recovery when the original metadata is absent and no temp
+            // file makes the intended final state ambiguous.
+            if (metadataBackup.isFile && !metadataFile.exists() && !metadataTemp.exists()) {
+                body.addView(chip("Restore saved metadata backup") { restoreProfileMetadataBackup() },
+                    LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(3) })
+                body.addView(label("Restores profile.txt.bak without touching disk.img.", 9, muted)
+                    .apply { setPadding(dp(2), dp(2), dp(2), dp(3)) })
+            }
         }
         if (diskPathCollision) body.addView(label("Disk actions are disabled to prevent profiles from sharing or overwriting a disk. Rename one profile in a future version or manually back up and resolve the old storage path.", 9, 0xFFFCA5A5.toInt()).apply { setPadding(dp(2), dp(2), dp(2), dp(4)) })
         body.addView(chip(if (diskPathCollision) "Disk actions blocked by path conflict" else if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
@@ -487,6 +495,35 @@ class MainActivity : Activity() {
             }
             throw e
         }
+    }
+
+    private fun restoreProfileMetadataBackup() {
+        if (hasLegacyDiskPathCollision(profile)) {
+            toast("Recovery blocked by a legacy storage path conflict.")
+            drawPage()
+            return
+        }
+        val disk = virtualDiskFile(profile)
+        val vmDir = disk.parentFile
+        if (!disk.isFile || vmDir == null) {
+            toast("Recovery blocked: the expected virtual disk was not found.")
+            drawPage()
+            return
+        }
+        val metadata = java.io.File(vmDir, "profile.txt")
+        val temp = java.io.File(vmDir, "profile.txt.tmp")
+        val backup = java.io.File(vmDir, "profile.txt.bak")
+        if (!backup.isFile || metadata.exists() || temp.exists()) {
+            toast("Recovery state changed; no files were modified.")
+            drawPage()
+            return
+        }
+        if (!backup.renameTo(metadata)) {
+            toast("Could not restore metadata backup; files were preserved.")
+        } else {
+            toast("Saved metadata backup restored. Review its settings before syncing.")
+        }
+        drawPage()
     }
 
     private fun syncProfileMetadata() {
