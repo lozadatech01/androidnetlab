@@ -336,9 +336,9 @@ class MainActivity : Activity() {
             }.show()
     }
     private fun virtualDiskFile(name: String): java.io.File {
-        val safeName = name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-').ifBlank { "vm" }
-        val identity = Integer.toUnsignedString(name.hashCode(), 16)
-        return java.io.File(filesDir, "vms/$safeName-$identity/disk.img")
+        // Keep the original path scheme so disks created by earlier app versions remain discoverable.
+        val safeName = name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").ifBlank { "vm" }
+        return java.io.File(filesDir, "vms/$safeName/disk.img")
     }
 
     private fun formatBytes(bytes: Long): String {
