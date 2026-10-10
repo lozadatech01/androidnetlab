@@ -61,9 +61,8 @@ jobs:
           trap 'result=$?; echo "$result" > android-deps-build-exit-code.txt; if [ "$result" -eq 0 ]; then echo "ANDROID_DEPS_RESULT=passed" > android-deps-build-result.txt; else echo "ANDROID_DEPS_RESULT=blocked; see android-deps-build.log" > android-deps-build-result.txt; { echo "### Android-target dependency build"; echo "Exit code: $result"; echo '~~~text'; tail -n 100 android-deps-build.log; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"; fi' EXIT
           echo "ANDROID_DEPS_PREFIX=$ANDROID_DEPS_PREFIX" >> "$GITHUB_ENV"
           echo "CROSS_BIN=$CROSS_BIN" >> "$GITHUB_ENV"
-          {
-            set -x
-            cat > "$CROSS_BIN/aarch64-linux-android-gcc" <<EOF
+          set -x
+          cat > "$CROSS_BIN/aarch64-linux-android-gcc" <<EOF
           #!/usr/bin/env bash
           exec "$TOOLCHAIN/bin/clang" --target=aarch64-linux-android$ANDROID_API "\$@"
           EOF
