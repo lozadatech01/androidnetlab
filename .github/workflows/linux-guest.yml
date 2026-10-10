@@ -24,9 +24,12 @@ jobs:
       - name: Test isolated two-guest Ethernet and ICMP
         run: python3 vm/test-two-guest-network.py
       - name: Upload guest image and test reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: androidnetlab-linux-guest-aarch64
-          path: vm/dist/*
-          if-no-files-found: error
+          path: |
+            vm/dist/**
+            !vm/dist/build-process-samples.txt
+          if-no-files-found: warn
           retention-days: 14
