@@ -1,0 +1,74 @@
+name: QEMU upstream Linux baseline
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "new/runtime/**"
+      - ".github/workflows/qemu-linux-baseline.yml"
+  pull_request:
+    paths:
+      - "new/runtime/**"
+      - ".github/workflows/qemu-linux-baseline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-qemu-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git python3 python3-venv pkg-config ninja-build \
+            meson libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev \
+            libfdt-dev libaio-dev liburing-dev libcap-ng-dev libattr1-dev \
+            libnuma-dev libudev-dev libusb-1.0-0-dev libffi-dev
+
+      - name: Fetch pinned upstream QEMU
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 \
+            https://download.qemu.org/qemu-9.2.0.tar.xz \
+            --output qemu.tar.xz
+          tar -xf qemu.tar.xz
+          echo "QEMU_SOURCE_DIR=$PWD/qemu-9.2.0" >> "$GITHUB_ENV"
+
+      - name: Configure minimal AArch64 system emulator
+        run: |
+          set -euxo pipefail
+          mkdir qemu-build
+          cd qemu-build
+          "$QEMU_SOURCE_DIR/configure" \
+            --target-list=aarch64-softmmu \
+            --disable-werror \
+            --disable-docs \
+            --disable-gtk \
+            --disable-sdl \
+            --disable-vnc \
+            --disable-curses \
+            --disable-spice \
+            --disable-tools
+          cp config.log ../qemu-config.log
+
+      - name: Build QEMU
+        run: |
+          set -euxo pipefail
+          ninja -C qemu-build -j2
+          qemu-build/qemu-system-aarch64 --version
+          qemu-build/qemu-system-aarch64 -machine help | tee qemu-machine-list.txt
+          grep -q 'virt' qemu-machine-list.txt
+
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-linux-baseline-evidence
+          path: |
+            qemu-config.log
+            qemu-machine-list.txt
+          if-no-files-found: ignore
+          retention-days: 14
