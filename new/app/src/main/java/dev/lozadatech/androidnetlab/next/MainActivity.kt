@@ -254,13 +254,20 @@ class MainActivity : Activity() {
         })
         body.addView(label("*Bridge support depends on Android/device networking.", 9, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
         body.addView(chip("+ Create VM profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(40)))
+        val diskPathCollision = hasLegacyDiskPathCollision(profile)
         val diskFile = virtualDiskFile(profile)
-        val diskStatus = if (diskFile.isFile) "Disk exists • ${formatBytes(diskFile.length())}" else "No virtual disk created for this profile"
-        body.addView(label(diskStatus, 10, if (diskFile.isFile) 0xFF86EFAC.toInt() else muted).apply { setPadding(dp(2), dp(6), dp(2), dp(3)) })
-        body.addView(chip(if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
-            if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else createVirtualDisk()
+        val diskStatus = when {
+            diskPathCollision -> "Storage conflict: another profile maps to the same legacy disk path"
+            diskFile.isFile -> "Disk exists • ${formatBytes(diskFile.length())}"
+            else -> "No virtual disk created for this profile"
+        }
+        body.addView(label(diskStatus, 10, if (diskFile.isFile && !diskPathCollision) 0xFF86EFAC.toInt() else if (diskPathCollision) 0xFFFCA5A5.toInt() else muted).apply { setPadding(dp(2), dp(6), dp(2), dp(3)) })
+        if (diskPathCollision) body.addView(label("Disk actions are disabled to prevent profiles from sharing or overwriting a disk. Rename one profile in a future version or manually back up and resolve the old storage path.", 9, 0xFFFCA5A5.toInt()).apply { setPadding(dp(2), dp(2), dp(2), dp(4)) })
+        body.addView(chip(if (diskPathCollision) "Disk actions blocked by path conflict" else if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
+            if (diskPathCollision) toast("Disk action blocked: resolve the legacy storage path conflict first.")
+            else if (diskFile.isFile) toast("Disk already exists; existing data was preserved.") else createVirtualDisk()
         }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
-        if (diskFile.isFile) {
+        if (diskFile.isFile && !diskPathCollision) {
             body.addView(chip("Sync saved profile metadata") { syncProfileMetadata() },
                 LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
             body.addView(label("Updates profile.txt only; virtual disk contents are not changed.", 9, muted)
@@ -364,10 +371,27 @@ class MainActivity : Activity() {
                 }
             }.show()
     }
+    private fun legacyDiskSlug(name: String) =
+        name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").ifBlank { "vm" }
+
+    private fun legacyVirtualDiskFile(name: String) =
+        java.io.File(filesDir, "vms/${legacyDiskSlug(name)}/disk.img")
+
+    private fun hasLegacyDiskPathCollision(name: String): Boolean {
+        val slug = legacyDiskSlug(name)
+        return (builtInProfiles + customProfiles).any { other ->
+            !other.equals(name, ignoreCase = true) && legacyDiskSlug(other) == slug
+        }
+    }
+
     private fun virtualDiskFile(name: String): java.io.File {
-        // Keep the original path scheme so disks created by earlier app versions remain discoverable.
-        val safeName = name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").ifBlank { "vm" }
-        return java.io.File(filesDir, "vms/$safeName/disk.img")
+        // Preserve a non-conflicting legacy disk path; new profiles receive a stable unique suffix.
+        val legacy = legacyVirtualDiskFile(name)
+        if (legacy.isFile && !hasLegacyDiskPathCollision(name)) return legacy
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(name.toByteArray(Charsets.UTF_8))
+            .take(6).joinToString("") { "%02x".format(it) }
+        return java.io.File(filesDir, "vms/${legacyDiskSlug(name)}-$digest/disk.img")
     }
 
     private fun formatBytes(bytes: Long): String {
@@ -379,6 +403,11 @@ class MainActivity : Activity() {
         "name=$profile\\narchitecture=aarch64\\nmachine=virt\\nmemory_mib=$ramMb\\nvcpus=$cpuCount\\ndisk_gib=$diskGb\\nnetwork=$networkMode\\nformat=raw\\n"
 
     private fun syncProfileMetadata() {
+        if (hasLegacyDiskPathCollision(profile)) {
+            toast("Metadata sync blocked by a legacy storage path conflict.")
+            drawPage()
+            return
+        }
         val disk = virtualDiskFile(profile)
         if (!disk.isFile) { toast("No virtual disk exists for this profile."); drawPage(); return }
         val metadata = java.io.File(disk.parentFile, "profile.txt")
@@ -395,6 +424,11 @@ class MainActivity : Activity() {
     }
 
     private fun createVirtualDisk() {
+        if (hasLegacyDiskPathCollision(profile)) {
+            toast("Disk creation blocked: this profile conflicts with an existing legacy storage path.")
+            drawPage()
+            return
+        }
         val disk = virtualDiskFile(profile)
         val vmDir = disk.parentFile ?: throw java.io.IOException("Invalid VM storage path")
         val tempDisk = java.io.File(vmDir, "disk.img.creating")
