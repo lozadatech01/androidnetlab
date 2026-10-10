@@ -40,7 +40,12 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        window.decorView.systemUiVisibility = 0
+        // Hide the Android status bar (time, battery, etc.) while using the VM workspace.
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         render()
     }
 
@@ -48,13 +53,16 @@ class MainActivity : Activity() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            val landscape = isLandscape()
+            setPadding(dp(if (landscape) 3 else 12), dp(if (landscape) 2 else 8),
+                dp(if (landscape) 3 else 12), dp(if (landscape) 2 else 8))
         }
-        root.addView(topBar())
+        // Landscape uses a compact workspace without branding or a permanent status banner.
+        if (!isLandscape()) root.addView(topBar())
         root.addView(toolbar())
         status = text("Runtime unavailable • console layout preview only", 11, muted)
         status.setPadding(dp(2), dp(6), dp(2), dp(8))
-        root.addView(status)
+        if (!isLandscape()) root.addView(status)
         panels = LinearLayout(this).apply {
             orientation = if (effectiveStacked()) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
@@ -87,7 +95,7 @@ class MainActivity : Activity() {
     private fun toolbar() = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(12), 0, dp(4))
+        setPadding(0, dp(if (isLandscape()) 1 else 12), 0, dp(if (isLandscape()) 1 else 4))
         addView(text("WINDOWS", 10, muted, true).apply {
             layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         })
@@ -161,7 +169,7 @@ class MainActivity : Activity() {
         val heading = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, dp(6))
+            setPadding(0, dp(if (isLandscape()) 1 else 8), 0, dp(if (isLandscape()) 2 else 6))
             addView(text("INPUT → VM $activeWindow", 11, blue, true).apply {
                 layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
             })
@@ -199,7 +207,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        keyboardHost.addView(commandInput, LinearLayout.LayoutParams(-1, dp(42)))
+        keyboardHost.addView(commandInput, LinearLayout.LayoutParams(-1, dp(if (isLandscape()) 32 else 42)))
         if (keyboardMode == KeyboardMode.NATIVE) {
             keyboardHost.addView(text("Android's installed keyboard handles text entry. Panel focus stays in the app.", 10, muted).apply {
                 setPadding(2, dp(6), 2, dp(6))
@@ -235,7 +243,7 @@ class MainActivity : Activity() {
                         "Alt" -> status.text = "Alt modifier selected in prototype; guest key injection is not wired yet."
                         else -> commandInput.append(key)
                     }
-                }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(3) })
+                }, LinearLayout.LayoutParams(0, dp(if (isLandscape()) 30 else 38), 1f).apply { marginEnd = dp(3) })
             }
             keyboardHost.addView(line)
         }
@@ -258,6 +266,9 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(0, dp(32), 1f).apply { marginEnd = dp(3) })
         }
     }
+
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     private fun effectiveStacked(): Boolean = when (layoutMode) {
         LayoutMode.STACKED -> true
