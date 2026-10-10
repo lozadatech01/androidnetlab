@@ -29,13 +29,13 @@ class MainActivity : Activity() {
     private val blue = 0xFF60A5FA.toInt()
     private val white = 0xFFF3F6FB.toInt()
     private val muted = 0xFF9CAFC4.toInt()
-    private var page = 1
+    private var page = 2
     private var windowCount = 2
     private var activeWindow = 1
     private var keyboardMode = 0
     private var showKeyboard = true
     private var layoutMode = 0
-    private var profile = "Alpine Linux"
+    private var profile = "Buildroot Minimal"
     private var ramMb = 512
     private var cpuCount = 1
     private var diskGb = 4
@@ -43,7 +43,7 @@ class MainActivity : Activity() {
     private var keepAwake = true
     private var autoStart = false
     private val customProfiles = mutableListOf<String>()
-    private val builtInProfiles = listOf("Alpine Linux", "Debian Linux", "Buildroot Minimal", "Custom ARM64 VM")
+    private val builtInProfiles = listOf("Buildroot Minimal", "Alpine Linux", "Debian Linux", "Custom ARM64 VM")
     private val prefs by lazy { getSharedPreferences("androidnetlab_vm_profiles_v1", Context.MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private lateinit var pageHost: LinearLayout
