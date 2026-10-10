@@ -210,7 +210,7 @@ object QemuBinaryProbe {
 
     private fun snapshot(output: StringBuilder): String = synchronized(output) { output.toString() }
 
-    private fun sha256(file: File): String = runCatching {
+    private fun sha256(file: File): String? = runCatching {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(file).use { input ->
             val buffer = ByteArray(64 * 1024)
