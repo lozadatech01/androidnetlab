@@ -2,6 +2,7 @@ package dev.lozadatech.androidnetlab.next.runtime
 
 import java.io.File
 import java.io.FileInputStream
+import java.io.DataInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -63,8 +64,8 @@ object QemuBinaryProbe {
 
             if (total < 20L) throw IOException("Selected file is too small to be an ELF executable.")
             val header = ByteArray(20)
-            val headerBytes = FileInputStream(temporary).use { it.read(header) }
-            if (headerBytes < header.size || !isAarch64Elf(header)) {
+            DataInputStream(FileInputStream(temporary)).use { it.readFully(header) }
+            if (!isAarch64Elf(header)) {
                 throw IOException("Selected file is not a 64-bit little-endian Android ARM64 ELF executable.")
             }
             if (!temporary.setReadable(true, true) || !temporary.setExecutable(true, true)) {
