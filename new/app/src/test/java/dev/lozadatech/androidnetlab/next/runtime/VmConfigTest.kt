@@ -1,7 +1,8 @@
 package dev.lozadatech.androidnetlab.next.runtime
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull\nimport org.junit.Assert.assertEquals\nimport org.junit.Assert.assertThrows
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class VmConfigTest {
