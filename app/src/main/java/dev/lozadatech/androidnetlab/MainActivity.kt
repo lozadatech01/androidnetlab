@@ -123,6 +123,7 @@ class MainActivity : Activity() {
                         val count = input.read(buffer)
                         if (count < 0) break
                         if (vmDir.usableSpace < count + STORAGE_RESERVE_BYTES) throw IllegalStateException("Storage is nearly full. Free up space and retry.")
+                        if (vmDir.usableSpace < count + STORAGE_RESERVE_BYTES) throw IllegalStateException("Storage is nearly full. Free up space and retry.")
                         output.write(buffer, 0, count)
                     }
                     output.fd.sync()
@@ -156,7 +157,8 @@ class MainActivity : Activity() {
                             while (true) {
                                 val count = input.read(buffer)
                                 if (count < 0) break
-                                output.write(buffer, 0, count)
+                                if (vmDir.usableSpace < count + STORAGE_RESERVE_BYTES) throw IllegalStateException("Storage is nearly full. Free up space and retry.")
+                        output.write(buffer, 0, count)
                             }
                             output.fd.sync()
                         }
