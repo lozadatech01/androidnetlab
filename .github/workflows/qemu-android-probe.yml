@@ -1,0 +1,134 @@
+name: QEMU Android NDK compatibility probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "new/runtime/**"
+      - ".github/workflows/qemu-android-probe.yml"
+  pull_request:
+    paths:
+      - "new/runtime/**"
+      - ".github/workflows/qemu-android-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-ndk-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang pkg-config python3 python3-venv ninja-build meson libglib2.0-dev libpixman-1-dev zlib1g-dev libslirp-dev libfdt-dev file binutils
+
+      - name: Fetch pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://dl.google.com/android/repository/android-ndk-r27c-linux.zip \
+            --output android-ndk.zip
+          unzip -q android-ndk.zip
+          echo "ANDROID_NDK_ROOT=$PWD/android-ndk-r27c" >> "$GITHUB_ENV"
+          echo "NDK_REVISION=27.2.12479018" | tee ndk-revision.txt
+
+      - name: Verify NDK can produce an Android ARM64 ELF
+        shell: bash
+        run: |
+          set -euxo pipefail
+          TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          printf 'int main(void) { return 0; }\n' > android-smoke.c
+          "$TOOLCHAIN/bin/clang" --target=aarch64-linux-android24 -fPIE -pie android-smoke.c -o android-smoke
+          file android-smoke | tee android-elf.txt
+          readelf -h android-smoke | tee android-elf-header.txt
+          grep -q 'AArch64' android-elf-header.txt
+
+      - name: Fetch pinned upstream QEMU source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 \
+            https://download.qemu.org/qemu-9.2.0.tar.xz \
+            --output qemu.tar.xz
+          tar -xf qemu.tar.xz
+          echo "QEMU_SOURCE_DIR=$PWD/qemu-9.2.0" >> "$GITHUB_ENV"
+          printf 'QEMU_VERSION=9.2.0\nSOURCE_URL=https://download.qemu.org/qemu-9.2.0.tar.xz\n' > qemu-source.txt
+
+      - name: Probe QEMU configure for Android host
+        id: probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          mkdir -p qemu-android-build
+          cd qemu-android-build
+          set +e
+          "$QEMU_SOURCE_DIR/configure" \
+            --cc="$TOOLCHAIN/bin/clang --target=aarch64-linux-android24" \
+            --cxx="$TOOLCHAIN/bin/clang++ --target=aarch64-linux-android24" \
+            --host-cc=cc \
+            --target-list=aarch64-softmmu \
+            --without-default-features \
+            --disable-werror \
+            --disable-docs \
+            --disable-gtk \
+            --disable-sdl \
+            --disable-vnc \
+            --disable-curses \
+            --disable-spice \
+            --disable-tools > ../qemu-android-configure.log 2>&1
+          result=$?
+          set -e
+          printf '%s\n' "$result" > ../qemu-android-configure-exit-code.txt
+          if [ "$result" -eq 0 ]; then
+            echo "CONFIGURE_RESULT=passed" | tee ../qemu-android-probe-result.txt
+          else
+            echo "CONFIGURE_RESULT=blocked (inspect qemu-android-configure.log)" | tee ../qemu-android-probe-result.txt
+          fi
+          # This is a diagnostic probe: preserve artifacts even if upstream
+          # configure cannot support the Android/Bionic host. The result file
+          # is the authority; a green workflow only means evidence was captured.
+          exit 0
+
+      - name: Build only if configure accepted the Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(cat qemu-android-configure-exit-code.txt)" != "0" ]; then
+            echo "Skipped: configure did not accept the Android host/toolchain." | tee qemu-android-build-result.txt
+            exit 0
+          fi
+          set +e
+          ninja -C qemu-android-build -j2 > qemu-android-build.log 2>&1
+          result=$?
+          set -e
+          printf '%s\n' "$result" > qemu-android-build-exit-code.txt
+          if [ "$result" -eq 0 ]; then
+            find qemu-android-build -type f -name 'qemu-system-aarch64' -exec file {} \; | tee qemu-android-binary.txt
+            echo "BUILD_RESULT=passed; device execution still unverified" | tee qemu-android-build-result.txt
+          else
+            echo "BUILD_RESULT=blocked (inspect qemu-android-build.log)" | tee qemu-android-build-result.txt
+          fi
+
+      - name: Upload all probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-android-ndk-probe-evidence
+          path: |
+            ndk-revision.txt
+            android-elf.txt
+            android-elf-header.txt
+            qemu-source.txt
+            qemu-android-configure.log
+            qemu-android-configure-exit-code.txt
+            qemu-android-probe-result.txt
+            qemu-android-build.log
+            qemu-android-build-exit-code.txt
+            qemu-android-build-result.txt
+            qemu-android-binary.txt
+          if-no-files-found: ignore
+          retention-days: 14
