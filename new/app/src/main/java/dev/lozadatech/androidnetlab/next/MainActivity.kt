@@ -14,7 +14,10 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import dev.lozadatech.androidnetlab.next.runtime.GuestArtifactStore
 import dev.lozadatech.androidnetlab.next.runtime.QemuBinaryProbe
+import dev.lozadatech.androidnetlab.next.runtime.QemuCommandBuilder
+import dev.lozadatech.androidnetlab.next.runtime.VmState
 import dev.lozadatech.androidnetlab.next.runtime.validateVmProfileName
 
 class MainActivity : Activity() {
@@ -46,10 +49,21 @@ class MainActivity : Activity() {
     private lateinit var commandInput: EditText
     private var commandDraft = ""
     private val importQemuRequestCode = 7128
+    private val importKernelRequestCode = 7129
+    private val importRootfsRequestCode = 7130
     private var qemuProbeVerified = false
     private var qemuProbeRunning = false
     private var qemuProbeDetail = "No Android ARM64 QEMU binary imported."
-    private var qemuProbeSha256: String? = null
+    private var activeVmState = VmState.UNAVAILABLE
+    private var activeVmStateDetail = "No guest has been started."
+    @Volatile private var activeGuestProcess: Process? = null
+    @Volatile private var activeGuestInput: java.io.OutputStream? = null
+    @Volatile private var stopRequested = false
+    private var activeGuestProfile: String? = null
+    private val guestConsoleLog = StringBuilder()
+    private var guestConsoleTextView: TextView? = null
+    private var guestConsoleScrollView: ScrollView? = null
+    private var guestConsoleDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -136,7 +150,7 @@ class MainActivity : Activity() {
         pageHost.addView(infoCard(
             "QEMU runtime",
             qemuRuntimeSubtitle(),
-            qemuProbeDetail
+            runtimeStatusDetail()
         ))
         pageHost.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
