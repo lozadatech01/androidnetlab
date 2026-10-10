@@ -10,17 +10,15 @@ if [[ ! -d "$WORK/.git" ]]; then
   git clone --depth 1 --branch "${BUILDROOT_VERSION}" https://github.com/buildroot/buildroot.git "$WORK"
 fi
 
-# Start from Buildroot's supported AArch64 QEMU board configuration.
 make -C "$WORK" qemu_aarch64_virt_defconfig
 
-# We use the CI runner's QEMU to test the guest; don't build a second QEMU.
+# The CI runner provides QEMU; building a second host-side QEMU is unnecessary.
 sed -i \
   -e 's/^BR2_PACKAGE_HOST_QEMU=y/# BR2_PACKAGE_HOST_QEMU is not set/' \
   -e 's/^BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE=y/# BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE is not set/' \
   "$WORK/.config"
 make -C "$WORK" olddefconfig
 
-# Guard against silently building the wrong architecture or missing output type.
 grep -q '^BR2_aarch64=y$' "$WORK/.config"
 grep -q '^BR2_LINUX_KERNEL=y$' "$WORK/.config"
 grep -q '^BR2_TARGET_ROOTFS_EXT2=y$' "$WORK/.config"
@@ -34,12 +32,29 @@ TARGET_DIR="$WORK/output/target"
 DIST_DIR="$ROOT/vm/dist"
 mkdir -p "$DIST_DIR"
 
-# Capture a build-time process snapshot for the CI artifact. This is a snapshot
-# after compilation, while package/service inventory below describes the guest.
-ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | head -n 30 \
-  > "$DIST_DIR/build-process-snapshot.txt" || true
+# Sample actual build processes while make runs. This is CI-host telemetry,
+# not a measurement of processes or RAM on the Android device.
+(
+  while :; do
+    {
+      echo "===== $(date -u +%FT%TZ) ====="
+      ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | head -n 25
+      echo
+    } >> "$DIST_DIR/build-process-samples.txt"
+    sleep 10
+  done
+) &
+sampler_pid=$!
+cleanup_sampler() {
+  kill "$sampler_pid" 2>/dev/null || true
+  wait "$sampler_pid" 2>/dev/null || true
+}
+trap cleanup_sampler EXIT
 
-make -C "$WORK" -j"$(nproc)"
+/usr/bin/time -v -o "$DIST_DIR/build-time-metrics.txt" make -C "$WORK" -j"$(nproc)"
+
+cleanup_sampler
+trap - EXIT
 
 for artifact in Image rootfs.ext2; do
   test -s "$IMAGE_DIR/$artifact" || {
@@ -51,13 +66,11 @@ done
 cp "$IMAGE_DIR/Image" "$DIST_DIR/Image"
 cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
 
-# Inventory init scripts and likely service binaries so we can identify
-# unnecessary guest-side background services before removing packages.
 {
   echo "Buildroot version: $BUILDROOT_VERSION"
   echo "Architecture: AArch64 (QEMU virt)"
   echo "Host QEMU package: disabled (CI runner supplies QEMU)"
-  echo "Desktop GUI/audio: not intentionally configured; inventory follows"
+  echo "Desktop GUI/audio: not intentionally configured; inspect inventory below"
   echo
   echo "Artifact sizes:"
   du -h "$DIST_DIR/Image" "$DIST_DIR/rootfs.ext2"
@@ -75,7 +88,7 @@ cp "$IMAGE_DIR/rootfs.ext2" "$DIST_DIR/rootfs.ext2"
     echo "(none)"
   fi
   echo
-  echo "Potential GUI/audio binaries and libraries (presence only):"
+  echo "Potential GUI/audio and optional service binaries (presence only):"
   for path in usr/bin/Xorg usr/bin/Xwayland usr/bin/weston usr/bin/pulseaudio usr/bin/pipewire usr/sbin/sshd usr/sbin/cron usr/bin/dbus-daemon usr/lib/libasound.so usr/lib/libpulse.so; do
     if [[ -e "$TARGET_DIR/$path" ]]; then echo "PRESENT: $path"; fi
   done
