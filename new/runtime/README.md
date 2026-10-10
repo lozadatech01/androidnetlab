@@ -1,10 +1,10 @@
 # Android QEMU runtime integration
 
-No QEMU binary/library is bundled here yet. The app must report the runtime as unavailable until a real runtime can be initialized; never simulate a successful boot.
+A QEMU 9.2.0 Android ARM64 executable has been cross-built in CI as a **candidate artifact**, but it is not bundled in the APK and has not been run on a phone. The app must report the runtime as unavailable until the candidate is validated and connected to real launch, console, readiness, and shutdown behavior; never simulate a successful boot.
 
 ## Current next step
 
-Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the Android compatibility investigation and its acceptance criteria. Run the [Android NDK compatibility probe](../../.github/workflows/qemu-android-probe.yml) from Actions to capture the pinned NDK/QEMU configure evidence. A green probe workflow only means evidence was captured; read its result file and exit codes. This is intentionally a gated proof of concept, not a promise that upstream QEMU will compile unchanged for Android.
+Follow [BUILD_SPIKE.md](BUILD_SPIKE.md) for the acceptance criteria. The [Android NDK compatibility probe](../../.github/workflows/qemu-android-probe.yml) now cross-builds a candidate for Android API 28 / ARM64 using NDK r27c and QEMU 9.2.0. The next gate is to verify `--version` and `-machine help` on an actual Android device, then execute guest code via TCG and boot the existing Buildroot guest. CI build success alone is not runtime proof.
 
 ## Integration principles
 
