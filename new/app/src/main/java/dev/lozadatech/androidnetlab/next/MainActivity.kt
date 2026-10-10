@@ -450,6 +450,28 @@ class MainActivity : Activity() {
     private fun profileMetadataText() =
         "name=$profile\narchitecture=aarch64\nmachine=virt\nmemory_mib=$ramMb\nvcpus=$cpuCount\ndisk_gib=$diskGb\nnetwork=$networkMode\nformat=raw\n"
 
+    private fun writeProfileMetadata(vmDir: java.io.File) {
+        val metadata = java.io.File(vmDir, "profile.txt")
+        val temp = java.io.File(vmDir, "profile.txt.tmp")
+        val backup = java.io.File(vmDir, "profile.txt.bak")
+        if (temp.exists()) throw java.io.IOException("An unfinished metadata file exists; inspect storage before retrying")
+        if (backup.exists()) throw java.io.IOException("A metadata backup exists; inspect storage before retrying")
+        temp.writeText(profileMetadataText())
+        var movedOriginal = false
+        try {
+            if (metadata.exists()) {
+                if (!metadata.renameTo(backup)) throw java.io.IOException("Could not safely back up existing metadata")
+                movedOriginal = true
+            }
+            if (!temp.renameTo(metadata)) throw java.io.IOException("Could not finalize metadata file")
+            if (movedOriginal) backup.delete()
+        } catch (e: Exception) {
+            if (!metadata.exists() && movedOriginal && backup.exists()) backup.renameTo(metadata)
+            if (temp.exists()) temp.delete()
+            throw e
+        }
+    }
+
     private fun syncProfileMetadata() {
         if (hasLegacyDiskPathCollision(profile)) {
             toast("Metadata sync blocked by a legacy storage path conflict.")
@@ -458,14 +480,10 @@ class MainActivity : Activity() {
         }
         val disk = virtualDiskFile(profile)
         if (!disk.isFile) { toast("No virtual disk exists for this profile."); drawPage(); return }
-        val metadata = java.io.File(disk.parentFile, "profile.txt")
-        val tempMetadata = java.io.File(disk.parentFile, "profile.txt.tmp")
         try {
-            tempMetadata.writeText(profileMetadataText())
-            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Could not finalize metadata file")
+            writeProfileMetadata(disk.parentFile ?: throw java.io.IOException("Invalid VM storage path"))
             toast("Profile metadata synchronized.")
         } catch (e: Exception) {
-            if (tempMetadata.exists()) tempMetadata.delete()
             toast("Metadata sync failed: ${e.message ?: "storage error"}")
         }
         drawPage()
@@ -488,11 +506,13 @@ class MainActivity : Activity() {
             if (!vmDir.exists() && !vmDir.mkdirs()) throw java.io.IOException("Could not create VM storage directory")
             if (!tempDisk.createNewFile()) throw java.io.IOException("Could not reserve temporary disk file")
             java.io.RandomAccessFile(tempDisk, "rw").use { it.setLength(requestedBytes) }
-            val metadata = java.io.File(vmDir, "profile.txt")
-            val tempMetadata = java.io.File(vmDir, "profile.txt.tmp")
-            tempMetadata.writeText(profileMetadataText())
+            if (java.io.File(vmDir, "profile.txt.tmp").exists()) throw java.io.IOException("An unfinished metadata file exists; inspect storage before retrying")
             if (disk.exists() || !tempDisk.renameTo(disk)) throw java.io.IOException("Could not finalize virtual disk")
-            if (!tempMetadata.renameTo(metadata)) throw java.io.IOException("Disk created, but metadata finalization failed; use Sync saved profile metadata to recover")
+            try {
+                writeProfileMetadata(vmDir)
+            } catch (metadataError: Exception) {
+                throw java.io.IOException("Disk created, but metadata finalization failed; use Sync saved profile metadata to recover", metadataError)
+            }
             toast("Created private raw disk: ${diskGb} GB logical size.")
             drawPage()
         } catch (e: Exception) {
