@@ -20,6 +20,16 @@ Therefore, use a staged investigation rather than assuming a normal Linux build 
 6. **Run a TCG smoke test.** Execute a tiny AArch64 system-emulation workload and prove translated guest code runs under Android memory protections.
 7. **Boot one real guest.** Use the existing Buildroot guest artifacts; capture serial output and verify a clear boot-ready marker and clean shutdown.
 
+## Automated Android NDK probe
+
+Workflow: `.github/workflows/qemu-android-probe.yml`.
+
+Run it manually from the repository's **Actions** tab or let it run when runtime-spike files change. It pins Android NDK r27c (revision `27.2.12479018`) and QEMU 9.2.0, first proves the NDK emits an AArch64 Android ELF, then captures QEMU's configure diagnostics for that toolchain. The artifact is named `qemu-android-ndk-probe-evidence`.
+
+This workflow is deliberately diagnostic: a green workflow means the probe ran and preserved evidence, **not** that QEMU configured or built. Check `qemu-android-probe-result.txt`, `qemu-android-configure-exit-code.txt`, and any build result/log. A configure failure is an actionable compatibility/dependency blocker, not a runtime pass. Even a build pass only produces a candidate artifact; Android device execution, TCG JIT behavior, guest boot, stop/restart, and performance remain separate gates.
+
+The probe initially uses runner-provided libraries to expose the first upstream configure/build barrier. If QEMU rejects the target or requires Android-built dependencies/patches, record that exact failure and extend the experiment rather than packaging a Linux-host binary or changing the UI to imply a VM can boot.
+
 ## Required evidence
 
 The spike is considered successful only when all of these are recorded:
