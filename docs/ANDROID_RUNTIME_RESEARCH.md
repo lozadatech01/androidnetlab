@@ -147,7 +147,7 @@ Already present in this repository:
 - Import/copy safeguards and documentation.
 
 Not implemented yet:
-- Android-compatible QEMU system-emulation engine.
+- **Runtime validation:** although CI now cross-builds a QEMU 9.2.0 Android ARM64 executable, it has not been launched on a real Android device. This is a candidate build, not a proven usable runtime.
 - JNI/native runtime adapter and VM process lifecycle.
 - Actual guest boot from the Android app.
 - Serial console integration.
@@ -155,6 +155,14 @@ Not implemented yet:
 - Running two guests on a phone.
 
 A successful Linux CI boot or two-guest QEMU test is useful evidence that guest images and the Linux-host test topology work, but it does **not** prove Android engine compatibility or acceptable phone performance.
+
+## 8.1 Update: first Android-target QEMU cross-build
+
+The CI experiment has advanced beyond the configure-only stage. With Android NDK r27c (revision `27.2.12479018`), API 28, QEMU 9.2.0, and Android-target builds of GLib/GObject, Pixman, libffi, zlib, and PCRE2, CI produced an AArch64 Android PIE executable whose ELF interpreter is `/system/bin/linker64`. The build disables QEMU's optional POSIX shared-memory host backend because Android Bionic does not provide `shm_open`/`shm_unlink`; regular RAM and file-backed disks remain the initial intended path.
+
+Evidence run: https://github.com/lozadatech01/androidnetlab/actions/runs/38092206058
+
+This is **not** yet an app runtime. The build is not packaged in the APK and has not been run on the target phone. Remaining gates are: strip/debug-size validation, launch permission and linker behavior in the Android app sandbox, `qemu-system-aarch64 --version`, machine/TCG smoke tests, booting the current Buildroot guest with serial readiness, and reliable stop/restart. Do not display a Running state before these are implemented and tested.
 
 ## 9. Research references
 
