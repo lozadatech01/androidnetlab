@@ -1,6 +1,7 @@
 package dev.lozadatech.androidnetlab.next
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
 import android.os.Bundle
@@ -33,6 +34,9 @@ class MainActivity : Activity() {
     private var networkMode = "User NAT"
     private var keepAwake = true
     private var autoStart = false
+    private val customProfiles = mutableListOf<String>()
+    private val builtInProfiles = listOf("Alpine Linux", "Debian Linux", "Buildroot Minimal", "Custom ARM64 VM")
+    private val prefs by lazy { getSharedPreferences("androidnetlab_vm_profiles_v1", Context.MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private lateinit var pageHost: LinearLayout
     private lateinit var status: TextView
@@ -45,6 +49,7 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        loadState()
         if (keepAwake) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         render()
     }
@@ -90,6 +95,7 @@ class MainActivity : Activity() {
     }
 
     private fun drawPage() {
+        saveState()
         pageHost.removeAllViews()
         when (page) {
             0 -> drawOverview()
@@ -212,7 +218,7 @@ class MainActivity : Activity() {
         body.addView(label("VM MANAGER", 11, muted, true))
         body.addView(label("Guest profiles and resource controls • UI preview only", 10, muted).apply { setPadding(0, dp(4), 0, dp(6)) })
         body.addView(section("VM PROFILES"))
-        listOf("Alpine Linux", "Debian Linux", "Buildroot Minimal", "Custom ARM64 VM").forEach { name ->
+        (builtInProfiles + customProfiles).forEach { name ->
             body.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(9), dp(7), dp(7), dp(7)); setBackgroundColor(if (profile == name) 0xFF1B304B.toInt() else surface)
@@ -237,12 +243,53 @@ class MainActivity : Activity() {
             }
         })
         body.addView(label("*Bridge support depends on Android/device networking.", 9, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
-        body.addView(chip("+ Create VM profile") { toast("Create profile UI preview; disk creation comes later") }, LinearLayout.LayoutParams(-1, dp(40)))
-        body.addView(chip("▶ Start selected VM") { toast("QEMU is deferred; this button is a preview") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
+        body.addView(chip("+ Create VM profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(40)))
+        body.addView(chip("▶ Start selected VM") { toast("Profile saved. QEMU is not installed yet, so no guest was started.") }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(5) })
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         pageHost.addView(label("Selected: $profile • $ramMb MB • $cpuCount CPU • $diskGb GB", 9, muted).apply { setPadding(0, dp(3), 0, 0) })
     }
 
+    private fun loadState() {
+        val p = getSharedPreferences("androidnetlab_vm_profiles_v1", Context.MODE_PRIVATE)
+        profile = p.getString("selected_profile", profile) ?: profile
+        ramMb = p.getInt("ram_mb", ramMb).coerceIn(128, 2048)
+        cpuCount = p.getInt("cpu_count", cpuCount).coerceIn(1, 4)
+        diskGb = p.getInt("disk_gb", diskGb).coerceIn(2, 32)
+        networkMode = p.getString("network_mode", networkMode) ?: networkMode
+        keepAwake = p.getBoolean("keep_awake", keepAwake)
+        autoStart = p.getBoolean("auto_start", autoStart)
+        layoutMode = p.getInt("layout_mode", layoutMode).coerceIn(0, 2)
+        windowCount = p.getInt("window_count", windowCount).coerceIn(1, 4)
+        activeWindow = p.getInt("active_window", activeWindow).coerceIn(1, windowCount)
+        val saved = p.getString("custom_profiles", "") ?: ""
+        customProfiles.clear()
+        saved.split("\\n").map { it.trim() }.filter { it.isNotEmpty() && it !in builtInProfiles }.distinct().forEach { customProfiles.add(it) }
+        if (profile !in builtInProfiles && profile !in customProfiles) profile = builtInProfiles.first()
+    }
+
+    private fun saveState() {
+        prefs.edit().putString("selected_profile", profile).putInt("ram_mb", ramMb)
+            .putInt("cpu_count", cpuCount).putInt("disk_gb", diskGb).putString("network_mode", networkMode)
+            .putBoolean("keep_awake", keepAwake).putBoolean("auto_start", autoStart)
+            .putInt("layout_mode", layoutMode).putInt("window_count", windowCount)
+            .putInt("active_window", activeWindow).putString("custom_profiles", customProfiles.joinToString("\\n")).apply()
+    }
+
+    private fun showCreateProfileDialog() {
+        val input = EditText(this).apply { hint = "e.g. Alpine Test VM"; setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Create VM profile")
+            .setMessage("Save a local configuration profile. This does not create a disk or start QEMU.")
+            .setView(input).setNegativeButton("Cancel", null)
+            .setPositiveButton("Save profile") { _, _ ->
+                val name = input.text.toString().trim()
+                when {
+                    name.isBlank() -> toast("Enter a profile name.")
+                    name.length > 40 -> toast("Keep the name under 40 characters.")
+                    name in builtInProfiles || name in customProfiles -> toast("That profile already exists.")
+                    else -> { customProfiles.add(name); profile = name; saveState(); drawPage(); toast("Profile saved on this device.") }
+                }
+            }.show()
+    }
     private fun drawSettings() {
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(8)) }
         body.addView(label("LAB SETTINGS", 11, muted, true))
