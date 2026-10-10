@@ -395,7 +395,7 @@ class MainActivity : Activity() {
             }
         ) { if (!qemuProbeRunning && activeGuestProcess == null) confirmImportQemuBinary() }, LinearLayout.LayoutParams(-1, dp(40)))
         body.addView(label(
-            "The smoke test runs --version, -machine help, and -accel help in the app sandbox.",
+            "The smoke test runs --version, -machine help, and -accel help in the app sandbox; it does not boot a guest.",
             9, muted
         ).apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
         body.addView(chip(
@@ -1241,10 +1241,10 @@ class MainActivity : Activity() {
         body.addView(infoCard("QEMU executable", qemuRuntimeSubtitle(), qemuProbeDetail))
         body.addView(chip("Import / retest Android ARM64 QEMU") { if (!qemuProbeRunning) confirmImportQemuBinary() },
             LinearLayout.LayoutParams(-1, dp(40)))
-        body.addView(label("An executable smoke-test pass is not a guest-boot pass. Guest kernel/rootfs launch, live serial I/O, reliable stop/restart, and isolated networking still need integration and device testing.", 9, muted)
+        body.addView(label("This build includes an experimental single-Buildroot launch path, serial console, boot-readiness detection, and manual stop. A QEMU smoke-test pass does not prove guest boot; launch and shutdown still need on-device validation. Networking and multi-VM are inactive.", 9, muted)
             .apply { setPadding(dp(2), dp(4), dp(2), dp(5)) })
         body.addView(section("ABOUT"))
-        body.addView(infoCard("AndroidNetLab • v0.1 UI", "Four workspace destinations", "Overview, Multi-window, VM Manager and Lab Settings are navigable."))
+        body.addView(infoCard("AndroidNetLab • experimental runtime", "Single Buildroot guest path", "Guest boot and shutdown are not device-validated. Networking and multi-VM remain inactive."))
         pageHost.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
