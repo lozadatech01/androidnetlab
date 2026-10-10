@@ -127,7 +127,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, dp(5))
             addView(label("PANELS", 10, muted, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
             (1..4).forEach { count ->
-                addView(chip("$count") { windowCount = count; activeWindow = activeWindow.coerceAtMost(count); drawPage() },
+                addView(chip(if (windowCount == count) "✓ $count" else "$count") { windowCount = count; activeWindow = activeWindow.coerceAtMost(count); drawPage() },
                     LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(3) })
             }
             addView(chip(if (showKeyboard) "Keys off" else "Keys on") { showKeyboard = !showKeyboard; hideNativeKeyboard(); drawPage() },
@@ -199,7 +199,7 @@ class MainActivity : Activity() {
             setPadding(dp(4), dp(3), dp(4), dp(3)); setBackgroundColor(0xFF243449.toInt())
             addView(label("FOCUS", 8, 0xFFBFDBFE.toInt(), true))
             (1..windowCount).forEach { number ->
-                addView(chip("VM $number") { activeWindow = number; drawPage() }, LinearLayout.LayoutParams(0, dp(28), 1f).apply { marginStart = dp(3) })
+                addView(chip(if (number == activeWindow) "✓ VM $number" else "VM $number") { activeWindow = number; drawPage() }, LinearLayout.LayoutParams(0, dp(28), 1f).apply { marginStart = dp(3) })
             }
         })
         listOf(listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "⌫"), listOf("/", "-", "|", ":", "←", "↓", "→"), listOf("Home", "End", "PgUp", "PgDn", "Enter", "Space")).forEach { keys ->
