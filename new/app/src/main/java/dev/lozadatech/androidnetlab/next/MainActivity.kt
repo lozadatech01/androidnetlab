@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import dev.lozadatech.androidnetlab.next.runtime.GuestArtifactStore
+import dev.lozadatech.androidnetlab.next.runtime.GuestBootReadiness
 import dev.lozadatech.androidnetlab.next.runtime.QemuBinaryProbe
 import dev.lozadatech.androidnetlab.next.runtime.QemuCommandBuilder
 import dev.lozadatech.androidnetlab.next.runtime.VmState
@@ -1060,9 +1061,7 @@ class MainActivity : Activity() {
     }
 
     private fun isGuestReadyMarker(line: String): Boolean =
-        line.contains("Welcome to Buildroot", ignoreCase = true) ||
-            line.contains("buildroot login:", ignoreCase = true) ||
-            Regex("login:\\s*$", RegexOption.IGNORE_CASE).containsMatchIn(line)
+        GuestBootReadiness.isReadyMarker(line)
 
     private fun updateGuestState(state: VmState, detail: String) {
         activeVmState = state
