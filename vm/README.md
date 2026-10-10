@@ -15,7 +15,7 @@ The Linux guest workflow now:
 4. Boots the guest with QEMU using one emulated vCPU, 256 MiB of configured guest RAM, and a virtual NIC.
 5. Requires a recognizable Buildroot login/banner in the serial output and records host-side QEMU resource measurements.
 
-The GUI/audio inventory is diagnostic rather than a hard failure: package contents are reported before making aggressive removals that might break the image. Shared libraries are not removed just because they are `.so` files; some are required for boot and networking.
+The GUI/audio inventory is diagnostic rather than a hard failure: package contents are reported before making aggressive removals that might break the image. Shared libraries are not removed just because they are `.so` files; some are required for boot and networking. CI also attempts a serial-console login to collect the guest's own process list, `/proc/meminfo`, mounts, and network interfaces. This is best-effort; if login automation cannot authenticate, the report explicitly says the guest diagnostics were skipped rather than substituting host process data.
 
 ## What the tests prove—and do not prove
 
