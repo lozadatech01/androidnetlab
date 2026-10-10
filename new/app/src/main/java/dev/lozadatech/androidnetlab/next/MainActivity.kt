@@ -268,13 +268,25 @@ class MainActivity : Activity() {
         body.addView(label(diskStatus, 10, if (diskFile.isFile && !diskPathCollision) 0xFF86EFAC.toInt() else if (diskPathCollision) 0xFFFCA5A5.toInt() else muted).apply { setPadding(dp(2), dp(6), dp(2), dp(3)) })
         if (diskFile.isFile && !diskPathCollision) {
             val metadataFile = java.io.File(diskFile.parentFile, "profile.txt")
+            val metadataTemp = java.io.File(diskFile.parentFile, "profile.txt.tmp")
+            val metadataBackup = java.io.File(diskFile.parentFile, "profile.txt.bak")
+            val hasRecoveryFiles = metadataTemp.exists() || metadataBackup.exists()
             val metadataStatus = when {
+                hasRecoveryFiles -> "Metadata recovery files present • inspect storage before syncing"
                 !metadataFile.isFile -> "Profile metadata missing • sync or recreate metadata"
                 runCatching { metadataFile.readText() == profileMetadataText() }.getOrDefault(false) -> "Profile metadata is synchronized"
                 else -> "Profile metadata is stale • sync to apply current settings"
             }
-            val metadataColor = if (metadataStatus == "Profile metadata is synchronized") 0xFF86EFAC.toInt() else 0xFFFCD34D.toInt()
+            val metadataColor = when {
+                hasRecoveryFiles -> 0xFFFCA5A5.toInt()
+                metadataStatus == "Profile metadata is synchronized" -> 0xFF86EFAC.toInt()
+                else -> 0xFFFCD34D.toInt()
+            }
             body.addView(label(metadataStatus, 9, metadataColor).apply { setPadding(dp(2), dp(1), dp(2), dp(3)) })
+            if (hasRecoveryFiles) {
+                body.addView(label("Automatic sync is blocked to avoid overwriting recoverable metadata. Back up the VM folder before manual repair.", 9, 0xFFFCA5A5.toInt())
+                    .apply { setPadding(dp(2), dp(1), dp(2), dp(3)) })
+            }
         }
         if (diskPathCollision) body.addView(label("Disk actions are disabled to prevent profiles from sharing or overwriting a disk. Rename one profile in a future version or manually back up and resolve the old storage path.", 9, 0xFFFCA5A5.toInt()).apply { setPadding(dp(2), dp(2), dp(2), dp(4)) })
         body.addView(chip(if (diskPathCollision) "Disk actions blocked by path conflict" else if (diskFile.isFile) "Virtual disk already exists" else "Create virtual disk (${diskGb} GB)") {
@@ -456,18 +468,23 @@ class MainActivity : Activity() {
         val backup = java.io.File(vmDir, "profile.txt.bak")
         if (temp.exists()) throw java.io.IOException("An unfinished metadata file exists; inspect storage before retrying")
         if (backup.exists()) throw java.io.IOException("A metadata backup exists; inspect storage before retrying")
-        temp.writeText(profileMetadataText())
         var movedOriginal = false
         try {
+            // Keep the write itself inside the recovery block so partial writes are cleaned up.
+            temp.writeText(profileMetadataText())
             if (metadata.exists()) {
                 if (!metadata.renameTo(backup)) throw java.io.IOException("Could not safely back up existing metadata")
                 movedOriginal = true
             }
             if (!temp.renameTo(metadata)) throw java.io.IOException("Could not finalize metadata file")
-            if (movedOriginal) backup.delete()
+            if (movedOriginal && backup.exists() && !backup.delete()) {
+                throw java.io.IOException("Metadata was updated, but its backup remains; inspect storage before retrying")
+            }
         } catch (e: Exception) {
             if (!metadata.exists() && movedOriginal && backup.exists()) backup.renameTo(metadata)
-            if (temp.exists()) temp.delete()
+            if (temp.exists() && !temp.delete()) {
+                e.addSuppressed(java.io.IOException("Could not remove partial metadata temporary file"))
+            }
             throw e
         }
     }
