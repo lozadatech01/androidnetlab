@@ -28,6 +28,16 @@ Run it manually from the repository's **Actions** tab or let it run when runtime
 
 A successful configure/build is a **cross-build result only**. Inspect `qemu-android-probe-result.txt`, `qemu-android-build-result.txt`, the ELF report, and build logs. A green diagnostic job by itself only means evidence was captured: read the result files. The stripped candidate has not yet been executed on a real Android device; TCG JIT behavior, guest boot, stop/restart, app-sandbox execution, and performance remain separate gates.
 
+### App-sandbox smoke test
+
+1. Open [the successful QEMU build run](https://github.com/lozadatech01/androidnetlab/actions/runs/38092721218) and download the `qemu-android-ndk-probe-evidence` artifact.
+2. Extract `qemu-system-aarch64-android-arm64` from the ZIP. Do not select the ZIP or the unstripped build.
+3. Install the Android APK from the Android workflow artifact, open **VMs**, and choose **Import & test QEMU ARM64 binary**.
+4. Select the extracted executable. The app copies it to private storage and runs only `--version`, `-machine help`, and `-accel help`. It displays the exact error if Android refuses to execute it.
+5. Save the result, Android version, device model/ABI, and app version before proceeding to guest boot.
+
+A passing app-sandbox smoke test only proves the executable starts and advertises the expected QEMU machine/TCG backend. It does not prove translated guest instructions execute or that a guest boots. A failed execution can indicate that Android prohibits executing a writable app-private file; in that case, test a native-library/JNI packaging route instead of weakening security controls.
+
 ## Required evidence
 
 The spike is considered successful only when all of these are recorded:
